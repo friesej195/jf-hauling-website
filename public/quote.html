@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<!--#include head-->
+<title>Get a Quote | {{NAME}} — Online Trucking Quote</title>
+<meta name="description" content="Get a ballpark quote for gooseneck flat deck hauling from {{NAME}} in minutes. Containers (20 ft / 40 ft) and general freight up to {{MAX_FT}} ft and {{MAX_LBS}} lbs.">
+</head>
+<body>
+<!--#include header-->
+<main id="main">
+  <section class="page-hero" style="padding:48px 0 44px"><div class="container">
+    <div class="crumbs"><a href="/">Home</a> / Get a Quote</div>
+    <h1>Get a quote</h1>
+    <p>Chat with our dispatch assistant to get a ballpark estimate. A dispatcher will confirm the final price and timing.</p>
+  </div></section>
+  <section class="block alt" style="padding-top:48px"><div class="container quote-layout">
+    <div id="qa-embed" class="qa-embed"></div>
+    <aside class="quote-side">
+      <div class="card"><h3>Have these handy</h3>
+        <ul class="checks" style="margin:.4rem 0 0">
+          <li>Pickup &amp; delivery address or city</li>
+          <li>Container size (20 ft / 40 ft) or load length</li>
+          <li>Approximate weight</li>
+          <li>Preferred pickup date</li>
+        </ul>
+      </div>
+      <div class="card"><h3>Our limits</h3>
+        <p style="margin:0">Max length <b>{{MAX_FT}} ft</b> (≈ {{MAX_M}} m)<br>Max payload <b>{{MAX_LBS}} lbs</b> (≈ {{MAX_KG}} kg)</p>
+      </div>
+      <div class="card"><h3>Prefer to talk?</h3><p style="margin:0 0 .8rem">Call dispatch directly.</p><a class="btn btn-dark" href="{{PHONE_HREF}}">Call {{PHONE}}</a></div>
+      <p class="small">Estimates are ballpark figures based on distance, freight type and weight, {{SERVICE_AREA}} service from Listowel. Final pricing is confirmed by our dispatcher and may change with route, wait time, site access or special handling. Plus applicable HST.</p>
+    </aside>
+  </div></section>
+</main>
+<!--#include footer-->
+</body>
+</html>

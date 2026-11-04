@@ -1,0 +1,48 @@
+/* ===== Quote assistant (floating widget + embedded) ===== */
+.qa{display:flex;flex-direction:column;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(31,33,37,.28);border:1px solid #e1e2e4;font-size:15.5px}
+.qa-head{display:flex;align-items:center;gap:.75rem;padding:14px 16px;background:linear-gradient(120deg,var(--charcoal),#3d4046);color:#fff}
+.qa-avatar{width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.qa-avatar svg{width:24px;height:24px}
+.qa-title{font-weight:700;line-height:1.2}
+.qa-sub{font-size:.8rem;color:#c2c4c8;display:flex;align-items:center;gap:.35rem}
+.qa-sub::before{content:"";width:8px;height:8px;border-radius:50%;background:#3ccf7a;display:inline-block}
+.qa-head .qa-x{margin-left:auto;background:none;border:0;color:#fff;font-size:1.6rem;cursor:pointer;line-height:1;padding:4px 8px;border-radius:8px}
+.qa-head .qa-x:hover{background:rgba(255,255,255,.12)}
+.qa-body{flex:1;overflow-y:auto;padding:18px 14px;background:#f4f4f3;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.qa-msg{max-width:86%;padding:10px 14px;border-radius:16px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;animation:fade .25s ease both}
+.qa-msg.bot{background:#fff;border:1px solid #e4e5e7;border-bottom-left-radius:4px;align-self:flex-start;color:var(--ink)}
+.qa-msg.me{background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:4px;align-self:flex-end}
+.qa-msg.warn{border-color:#f3d27a;background:#fffaeb}
+.qa-msg b{font-weight:700}
+.qa-est{align-self:stretch;background:linear-gradient(120deg,#2a2d32,#3d4046);color:#fff;border-radius:14px;padding:14px 16px}
+.qa-est .amt{font-family:var(--head);font-size:2rem;font-weight:800;color:var(--yellow);line-height:1.1}
+.qa-est small{color:#c2c4c8;display:block}
+.qa-est details{margin-top:.5rem;font-size:.85rem;color:#d0d2d5}
+.qa-est table{width:100%;border-collapse:collapse;margin-top:.4rem}
+.qa-est td{padding:2px 0}.qa-est td:last-child{text-align:right}
+.qa-est .ex{display:inline-block;margin-top:.5rem;background:rgba(246,185,19,.15);color:var(--yellow);border-radius:6px;padding:2px 8px;font-size:.75rem;font-weight:700;letter-spacing:.5px}
+.qa-quick{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 10px;background:#f4f4f3}
+.qa-quick button{border:1.5px solid var(--accent);background:#fff;color:var(--charcoal);font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;font-size:.9rem;font-family:inherit}
+.qa-quick button:hover{background:var(--accent);color:var(--accent-ink)}
+.qa-form{display:flex;gap:8px;padding:12px;border-top:1px solid #e4e5e7;background:#fff}
+.qa-form input{flex:1;min-width:0;border:1.5px solid #d2d4d7;border-radius:12px;padding:11px 13px;font:inherit}
+.qa-form input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(246,185,19,.35)}
+.qa-form button{background:var(--accent);border:0;color:var(--accent-ink);border-radius:12px;padding:0 16px;cursor:pointer;display:flex;align-items:center}
+.qa-form button:disabled,.qa-form input:disabled{opacity:.5;cursor:not-allowed}
+.qa-form button svg{width:22px;height:22px}
+.qa-foot{font-size:.72rem;color:var(--muted);text-align:center;padding:0 12px 10px;background:#fff}
+.qa-typing{display:inline-flex;gap:4px;padding:12px 14px}
+.qa-typing i{width:7px;height:7px;border-radius:50%;background:#9aa5b1;animation:blink 1s infinite}
+.qa-typing i:nth-child(2){animation-delay:.15s}.qa-typing i:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,80%,100%{opacity:.3}40%{opacity:1}}
+/* floating launcher */
+.qa-launch{position:fixed;right:22px;bottom:22px;z-index:90;display:flex;align-items:center;gap:.6rem;background:var(--accent);color:var(--accent-ink);border:0;border-radius:999px;padding:14px 20px 14px 16px;font-weight:800;font-size:1rem;box-shadow:0 12px 30px rgba(246,185,19,.45);cursor:pointer;font-family:var(--body)}
+.qa-launch:hover{background:var(--accent-d)}
+.qa-launch svg{width:26px;height:26px}
+.qa-pop{position:fixed;right:22px;bottom:92px;z-index:95;width:390px;height:min(620px,calc(100vh - 120px));display:none}
+.qa-pop.open{display:flex}
+.qa-pop .qa{width:100%;height:100%}
+@media (max-width:560px){.qa-pop{inset:0;width:auto;height:100%;bottom:0;right:0}.qa-pop .qa{border-radius:0}.qa-launch span{display:none}.qa-launch{padding:16px}}
+/* embedded */
+.qa-embed .qa{height:680px;max-height:80vh}
+.qa-embed .qa-x{display:none}

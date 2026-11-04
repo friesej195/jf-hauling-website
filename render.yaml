@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: jf-hauling
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: SITE_URL
+        sync: false

@@ -1,0 +1,27 @@
+{
+  "name": "jf-hauling-site",
+  "version": "1.0.0",
+  "description": "JF Hauling website + AI dispatcher quote assistant",
+  "main": "server/server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "test": "node tests/e2e.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "express": "^4.22.3",
+    "nodemailer": "^10.2.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

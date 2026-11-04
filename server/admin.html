@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>Quote requests | {{NAME}} Admin</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/img/brand/favicon-32.png" type="image/png"><link rel="stylesheet" href="/css/style.css">
+<style>
+body{background:var(--bg)}
+.adm-head{background:var(--charcoal);color:#fff;padding:18px 0}.adm-head .container{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+.adm-head h1{font-size:1.8rem;margin:0}
+.warnbar{background:#fffaeb;border:1px solid #f3d27a;color:#4a3b00;padding:10px 14px;border-radius:10px;margin:18px 0 0;font-size:.95rem}
+.tabs{display:flex;gap:.5rem;margin:22px 0 14px}.tabs button{border:1.5px solid var(--line);background:#fff;padding:.5em 1em;border-radius:999px;font-weight:700;cursor:pointer}.tabs button.on{background:var(--charcoal);color:#fff;border-color:var(--charcoal)}
+.filters{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:14px}.filters input,.filters select{padding:.55em .8em;border:1.5px solid #cfd7e1;border-radius:10px;font:inherit}
+table.t{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.05);font-size:.93rem}
+.t th{background:#eef2f6;text-align:left;padding:10px;font-size:.8rem;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+.t td{padding:10px;border-top:1px solid var(--line);vertical-align:top}
+.t tr.row{cursor:pointer}.t tr.row:hover td{background:#fafbfc}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:700;background:#ecedee;color:#2a2d32;white-space:nowrap}
+.pill.review{background:#fff1e8;color:#b54708}.pill.new{background:#e8f6ee;color:#1f8a4c}.pill.closed{background:#eee;color:#555}
+.detail td{background:#fbfcfd}.detail pre{white-space:pre-wrap;font-family:inherit;margin:0}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px}.kv b{color:var(--muted);font-weight:600}
+.tx{max-height:300px;overflow:auto;background:#f4f4f3;border-radius:10px;padding:10px;margin-top:10px;font-size:.88rem}
+.tx div{margin:4px 0}.tx .c{color:var(--link);font-weight:600}
+.empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border-radius:12px}
+@media (max-width:760px){.hide-m{display:none}.kv{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="adm-head"><div class="container"><h1>{{NAME}} · Quote requests</h1><div><a class="btn btn-ghost" href="/admin/quotes.csv">Download CSV</a> <a class="btn btn-primary" href="/">View site</a></div></div></div>
+<main class="container" style="padding-bottom:60px">
+  <div id="warn"></div>
+  <div class="tabs"><button data-tab="quotes" class="on">Quote requests <span id="nq"></span></button><button data-tab="messages">Contact messages <span id="nm"></span></button></div>
+  <div class="filters"><input id="q" placeholder="Search name, city, email…"><select id="fs"><option value="">All statuses</option><option>new</option><option>needs review</option><option>contacted</option><option>quoted</option><option>booked</option><option>closed</option></select><button class="btn btn-outline" id="refresh" style="padding:.5em 1em">Refresh</button></div>
+  <div id="list"></div>
+</main>
+<script>
+const STATUSES=['new','needs review','contacted','quoted','booked','closed'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDate=s=>new Date(s).toLocaleString('en-CA',{timeZone:'America/Toronto',dateStyle:'medium',timeStyle:'short'});
+let data={quotes:[],messages:[]},tab='quotes',open=null;
+async function load(){const r=await fetch('/admin/api/quotes');data=await r.json();
+  const w=[];if(data.exampleRates)w.push('Pricing is using <b>EXAMPLE rates</b> — set real rates in <code>config.js</code> and set <code>isExample: false</code>.');
+  if(!data.emailEnabled)w.push('Email notifications are off (set SMTP_* variables to turn on).');
+  w.push('Assistant mode: <b>'+(data.aiEnabled?'AI + guided':'guided (no AI key)')+'</b>.');
+  document.getElementById('warn').innerHTML='<div class="warnbar">'+w.join(' ')+'</div>';
+  document.getElementById('nq').textContent='('+data.quotes.length+')';document.getElementById('nm').textContent='('+data.messages.length+')';render();}
+function pill(s){const c=s==='needs review'?'review':s==='new'?'new':s==='closed'?'closed':'';return '<span class="pill '+c+'">'+esc(s)+'</span>'}
+function sel(kind,r){return '<select data-kind="'+kind+'" data-id="'+r.id+'" onclick="event.stopPropagation()">'+STATUSES.map(s=>'<option'+(s===r.status?' selected':'')+'>'+s+'</option>').join('')+'</select>'}
+function render(){const q=document.getElementById('q').value.toLowerCase(),fs=document.getElementById('fs').value;const L=document.getElementById('list');
+  const rows=data[tab].filter(r=>(!fs||r.status===fs)&&(!q||JSON.stringify(r).toLowerCase().includes(q)));
+  if(!rows.length){L.innerHTML='<div class="empty">No '+(tab==='quotes'?'quote requests':'messages')+' yet.</div>';return}
+  if(tab==='messages'){L.innerHTML='<table class="t"><tr><th>Received</th><th>Name</th><th>Contact</th><th>Message</th><th>Status</th></tr>'+rows.map(r=>'<tr><td>'+fmtDate(r.createdAt)+'</td><td>'+esc(r.name)+'</td><td><a href="mailto:'+esc(r.email)+'">'+esc(r.email)+'</a><br>'+esc(r.phone)+'</td><td style="white-space:pre-wrap">'+esc(r.message)+'</td><td>'+sel('messages',r)+'</td></tr>').join('')+'</table>';return}
+  L.innerHTML='<table class="t"><tr><th>Ref / received</th><th>Customer</th><th class="hide-m">Route</th><th class="hide-m">Load</th><th>Estimate</th><th>Status</th></tr>'+rows.map(r=>{const s=r.shipment,e=r.estimate;
+    let h='<tr class="row" data-id="'+r.id+'"><td><b>'+r.id+'</b><br><span class="small">'+fmtDate(r.createdAt)+'</span></td><td>'+esc(r.customer.name)+(r.customer.company?'<br><span class="small">'+esc(r.customer.company)+'</span>':'')+'</td><td class="hide-m">'+esc(s.pickup)+' →<br>'+esc(s.delivery)+(r.distance?'<br><span class="small">~'+r.distance.loadedKm+' km</span>':'')+'</td><td class="hide-m">'+esc(s.freightTypeLabel)+(s.lengthFt?' · '+s.lengthFt+' ft':'')+'<br>'+(s.weightLbs?s.weightLbs.toLocaleString('en-CA')+' lbs':'')+'</td><td>'+(e?'$'+e.low.toLocaleString('en-CA')+'–$'+e.high.toLocaleString('en-CA'):'—')+(r.flags&&r.flags.length?'<br>'+pill('over limit'):'')+'</td><td>'+sel('quotes',r)+'</td></tr>';
+    if(open===r.id){h+='<tr class="detail"><td colspan="6"><div class="kv">'+[['Email','<a href="mailto:'+esc(r.customer.email)+'">'+esc(r.customer.email)+'</a>'],['Phone','<a href="tel:'+esc(r.customer.phone)+'">'+esc(r.customer.phone)+'</a>'],['Pickup',esc(s.pickup)+(r.distance&&r.distance.pickupLabel?'<br><span class="small">Mapped: '+esc(r.distance.pickupLabel)+'</span>':'')],['Delivery',esc(s.delivery)+(r.distance&&r.distance.deliveryLabel?'<br><span class="small">Mapped: '+esc(r.distance.deliveryLabel)+'</span>':'')],['Freight',esc(s.freightTypeLabel)+(s.freightTypeNote?' (customer said: '+esc(s.freightTypeNote)+')':'')],['Length',s.lengthFt?s.lengthFt+' ft':'—'],['Weight',s.weightLbs?s.weightLbs.toLocaleString('en-CA')+' lbs ('+Math.round(s.weightLbs/2.20462).toLocaleString('en-CA')+' kg)':'—'],['Pickup date',esc(s.pickupDate)],['Notes',esc(s.notes||'None')],['Distance',r.distance?r.distance.loadedKm+' km loaded'+(r.distance.deadheadKm?', '+r.distance.deadheadKm+' km from Listowel to pickup':'')+' — '+esc(r.distance.source):'—'],['Flags',(r.flags||[]).map(f=>esc(f.message)).join('<br>')||'None'],['Estimate',e?e.lines.map(l=>esc(l.label)+': $'+l.amount.toFixed(2)).join('<br>')+'<br><b>Range $'+e.low+'–$'+e.high+' '+e.currency+'</b>'+(e.isExample?' (example rates)':''):'Not shown (needs review)'],['Mode',esc(r.mode)]].map(([k,v])=>'<b>'+k+'</b><div>'+v+'</div>').join('')+'</div><div class="tx"><b>Conversation</b>'+(r.transcript||[]).map(m=>'<div class="'+(m.from==='customer'?'c':'')+'">'+(m.from==='customer'?'Customer: ':'Assistant: ')+esc(m.text).replace(/\*\*/g,'')+'</div>').join('')+'</div></td></tr>'}
+    return h}).join('')+'</table>';}
+document.addEventListener('click',e=>{const tr=e.target.closest('tr.row');if(tr){open=open===tr.dataset.id?null:tr.dataset.id;render()}
+  const b=e.target.closest('.tabs button');if(b){tab=b.dataset.tab;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));open=null;render()}});
+document.addEventListener('change',async e=>{const s=e.target;if(s.dataset&&s.dataset.id){await fetch('/admin/api/'+s.dataset.kind+'/'+s.dataset.id+'/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:s.value})});const r=data[s.dataset.kind].find(x=>x.id===s.dataset.id);if(r)r.status=s.value}
+  if(s.id==='fs')render()});
+document.getElementById('q').addEventListener('input',render);document.getElementById('refresh').addEventListener('click',load);
+load();
+</script>
+</body>
+</html>

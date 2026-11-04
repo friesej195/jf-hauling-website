@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-label="Illustration of a dually pickup truck towing a gooseneck flatdeck trailer loaded with a shipping container">
+  <defs>
+    <linearGradient id="ctr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f8c22e"/><stop offset="1" stop-color="#d99e00"/></linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3f6f9"/><stop offset="1" stop-color="#b9c3cf"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5d6670"/><stop offset="1" stop-color="#24272c"/></linearGradient>
+    <linearGradient id="deck" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#44484f"/><stop offset="1" stop-color="#232529"/></linearGradient>
+  </defs>
+  <ellipse cx="455" cy="270" rx="430" ry="9" fill="#000" opacity=".35"/>
+
+  <!-- ===== Gooseneck flatdeck trailer ===== -->
+  <!-- container (40 ft, on the deck) -->
+  <rect x="44" y="74" width="510" height="126" rx="3" fill="url(#ctr)"/>
+  <g stroke="#b58400" stroke-width="4" opacity=".55">
+    <line x1="80" y1="84" x2="80" y2="190"/><line x1="106" y1="84" x2="106" y2="190"/><line x1="132" y1="84" x2="132" y2="190"/><line x1="158" y1="84" x2="158" y2="190"/><line x1="184" y1="84" x2="184" y2="190"/><line x1="210" y1="84" x2="210" y2="190"/><line x1="236" y1="84" x2="236" y2="190"/><line x1="262" y1="84" x2="262" y2="190"/><line x1="288" y1="84" x2="288" y2="190"/><line x1="314" y1="84" x2="314" y2="190"/><line x1="340" y1="84" x2="340" y2="190"/><line x1="366" y1="84" x2="366" y2="190"/><line x1="392" y1="84" x2="392" y2="190"/><line x1="418" y1="84" x2="418" y2="190"/><line x1="444" y1="84" x2="444" y2="190"/><line x1="470" y1="84" x2="470" y2="190"/><line x1="496" y1="84" x2="496" y2="190"/><line x1="522" y1="84" x2="522" y2="190"/>
+  </g>
+  <rect x="44" y="74" width="510" height="10" fill="#b58400"/><rect x="44" y="190" width="510" height="10" fill="#b58400"/>
+  <rect x="44" y="74" width="12" height="126" fill="#9a7000"/><rect x="542" y="74" width="12" height="126" fill="#9a7000"/>
+  <!-- tie-down straps -->
+  <g stroke="#2a2d32" stroke-width="3" opacity=".9"><line x1="120" y1="74" x2="120" y2="214"/><line x1="478" y1="74" x2="478" y2="214"/></g>
+  <!-- deck + neck -->
+  <rect x="28" y="200" width="562" height="16" rx="2" fill="url(#deck)"/>
+  <rect x="28" y="214" width="562" height="4" fill="#11171d"/>
+  <path d="M566 216 L590 200 L622 150 L716 150 Q722 150 722 156 L722 166 Q722 172 716 172 L632 172 L604 216 Z" fill="url(#deck)"/>
+  <rect x="700" y="172" width="12" height="12" fill="#11171d"/><!-- gooseneck coupler -->
+  <rect x="612" y="196" width="8" height="38" rx="2" fill="#5b6878"/><!-- landing jack -->
+  <rect x="28" y="203" width="10" height="8" rx="1" fill="#e5484d"/><!-- tail light -->
+  <!-- trailer fenders + tandem dual axles -->
+  <path d="M352 218 q0-18 30-18 h70 q30 0 30 18 z" fill="#2b3540"/>
+  <g fill="#14191f" stroke="#2c3540" stroke-width="5"><circle cx="384" cy="244" r="23"/><circle cx="450" cy="244" r="23"/></g>
+  <g fill="#9aa5b1"><circle cx="384" cy="244" r="8"/><circle cx="450" cy="244" r="8"/></g>
+
+  <!-- ===== 3500 dually crew-cab pickup ===== -->
+  <!-- bed -->
+  <path d="M640 180 h96 v50 h-96 z" fill="url(#body)"/>
+  <rect x="640" y="178" width="96" height="6" fill="#d7dee6"/>
+  <!-- dually rear fender flare -->
+  <path d="M646 232 Q648 200 690 198 Q732 200 734 232 Z" fill="#a9b4c1"/>
+  <!-- cab + hood -->
+  <path d="M736 230 V140 Q736 128 748 128 H800 Q809 128 815 136 L838 170 L872 174 Q884 176 886 188 L888 218 Q888 230 876 230 Z" fill="url(#body)"/>
+  <path d="M746 138 H772 V170 H746 Z" fill="url(#glass)"/>
+  <path d="M778 138 H800 Q805 138 808 142 L826 170 H778 Z" fill="url(#glass)"/>
+  <line x1="775" y1="174" x2="775" y2="226" stroke="#9aa5b1" stroke-width="2"/>
+  <line x1="812" y1="174" x2="812" y2="226" stroke="#9aa5b1" stroke-width="2"/>
+  <rect x="760" y="180" width="10" height="3" rx="1" fill="#7b8794"/><rect x="796" y="180" width="10" height="3" rx="1" fill="#7b8794"/>
+  <rect x="818" y="150" width="6" height="14" rx="2" fill="#5b6878"/><!-- tow mirror -->
+  <rect x="874" y="182" width="12" height="10" rx="2" fill="#ffd166"/><!-- headlight -->
+  <rect x="878" y="196" width="10" height="20" rx="2" fill="#5b6878"/><!-- grille -->
+  <rect x="636" y="224" width="256" height="8" rx="3" fill="#7b8794"/><!-- bumper/rocker -->
+  <!-- wheel arches -->
+  <circle cx="690" cy="244" r="30" fill="#0f141a"/><circle cx="846" cy="244" r="28" fill="#0f141a"/>
+  <!-- dual rear wheels (outer wheel + deep-dish hub) and front wheel -->
+  <circle cx="690" cy="244" r="26" fill="#14191f" stroke="#2c3540" stroke-width="5"/>
+  <circle cx="690" cy="244" r="13" fill="#9aa5b1"/><circle cx="690" cy="244" r="6" fill="#d7dee6"/>
+  <circle cx="846" cy="244" r="25" fill="#14191f" stroke="#2c3540" stroke-width="5"/>
+  <circle cx="846" cy="244" r="12" fill="#9aa5b1"/><circle cx="846" cy="244" r="5" fill="#d7dee6"/>
+</svg>
