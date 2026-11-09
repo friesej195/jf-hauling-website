@@ -1,18 +1,24 @@
 // Ballpark estimate from the pricing table in config.js.
 const config = require('../config');
 
-function estimate({ freightType, weightLbs, loadedKm, deadheadKm = 0, notes = '' }) {
+function moneyRate(n) { return Number(n).toFixed(2); }
+
+function estimate({ freightType, weightLbs, loadedKm, deadheadKm = 0, notes = '', shedWidthFt } = {}) {
   const P = config.pricing;
   const lines = [];
   const add = (label, amount) => { if (amount) lines.push({ label, amount: Math.round(amount * 100) / 100 }); };
+  const shed = freightType === 'shed';
+  const width = Number(shedWidthFt);
+  const shedRate = shed && P.shedPerKmByWidth && P.shedPerKmByWidth[width] != null ? Number(P.shedPerKmByWidth[width]) : null;
 
   add('Base fee', P.baseFee);
-  add(`Distance: ${loadedKm} km × $${P.perKmLoaded}/km`, loadedKm * P.perKmLoaded);
+  if (shed && shedRate != null) add(`Distance: ${loadedKm} km × $${moneyRate(shedRate)}/km (${width} ft wide shed)`, loadedKm * shedRate);
+  else add(`Distance: ${loadedKm} km × $${P.perKmLoaded}/km`, loadedKm * P.perKmLoaded);
   const dh = Math.max(0, (deadheadKm || 0) - P.deadheadFreeKm);
   if (P.perKmDeadhead && dh) add(`Travel to pickup: ${dh} km × $${P.perKmDeadhead}/km`, dh * P.perKmDeadhead);
   const sur = P.containerSurcharge[freightType] || 0;
   add(freightType === 'general' ? 'Freight handling' : `Container surcharge (${freightType === 'container20' ? '20 ft' : '40 ft'})`, sur);
-  if (weightLbs > P.heavyWeightThresholdLbs) {
+  if (!shed && weightLbs > P.heavyWeightThresholdLbs) {
     const extra = Math.ceil((weightLbs - P.heavyWeightThresholdLbs) / 1000);
     add(`Heavy load: ${extra} × 1,000 lbs over ${P.heavyWeightThresholdLbs.toLocaleString('en-CA')} lbs`, extra * P.heavyWeightPer1000Lbs);
   }

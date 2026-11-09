@@ -4,7 +4,7 @@
 // every field is still validated here and limits are always enforced here.
 const crypto = require('crypto');
 const config = require('../config');
-const { V, fmtLbs, fmtFt } = require('./validators');
+const { V, fmtLbs, fmtFt, fmtShedSize, SHED_WIDTHS, SHED_LENGTHS, MULE_NOTE } = require('./validators');
 const { estimateDistance } = require('./routing');
 const pricing = require('./pricing');
 const llm = require('./llm');
@@ -13,16 +13,25 @@ const B = config.business;
 const L = config.limits;
 // Load details come first so a ballpark price does not require contact info.
 // Name, phone and email are collected only after the customer asks dispatch to follow up.
-const LOAD_FIELDS = ['pickup', 'delivery', 'freightType', 'lengthFt', 'weightLbs', 'pickupDate', 'notes'];
+const LOAD_FIELDS = ['pickup', 'delivery', 'freightType', 'shedWidthFt', 'shedLengthFt', 'shedMule', 'lengthFt', 'weightLbs', 'pickupDate', 'notes'];
 const CONTACT_FIELDS = ['name', 'phone', 'email'];
 const FIELDS = [...LOAD_FIELDS, ...CONTACT_FIELDS];
 const LABELS = {
   name: 'Name', email: 'Email', phone: 'Phone', pickup: 'Pickup', delivery: 'Delivery',
-  freightType: 'Freight type', lengthFt: 'Length', weightLbs: 'Weight', pickupDate: 'Pickup date', notes: 'Special notes',
+  freightType: 'Freight type', shedWidthFt: 'Shed width', shedLengthFt: 'Shed length', shedMule: 'Shed mule',
+  lengthFt: 'Length', weightLbs: 'Weight', pickupDate: 'Pickup date', notes: 'Special notes',
 };
 const FT_LABEL = { container20: '20 ft container', container40: '40 ft container', shed: 'Sheds & portable buildings', general: 'General freight' };
 const isContainer = (t) => t === 'container20' || t === 'container40';
-const asksLength = (t) => t === 'general' || t === 'shed';
+// Sheds use width, length and mule choices. General freight still asks for a typed length.
+// Containers and general freight still ask for weight. Sheds do not.
+function fieldApplies(s, f) {
+  const shed = s.data.freightType === 'shed';
+  if (f === 'shedWidthFt' || f === 'shedLengthFt' || f === 'shedMule') return shed;
+  if (f === 'lengthFt') return s.data.freightType === 'general';
+  if (f === 'weightLbs') return !shed;
+  return true;
+}
 const MAX_KG = Math.round(L.maxWeightLbs / 2.20462).toLocaleString('en-CA');
 const MAX_M = (L.maxLengthFt / 3.28084).toFixed(1);
 const callLine = () => `call us at **${B.phone}**`;
@@ -57,6 +66,21 @@ function question(s, step = s.step) {
     }
     case 'delivery': return { text: 'And where is it going?', input: 'text', placeholder: 'Delivery address or city' };
     case 'freightType': return { text: 'What are we moving?', input: 'text', placeholder: 'e.g. 40 ft container or a shed', quick: [{ label: '20 ft container', value: 'container20' }, { label: '40 ft container', value: 'container40' }, { label: 'Sheds', value: 'shed' }, { label: 'General freight', value: 'general' }] };
+    case 'shedWidthFt': return {
+      text: 'What size is your shed?\n\nChoose the **width**.',
+      input: 'choice',
+      quick: SHED_WIDTHS.map((n) => ({ label: `${n} ft`, value: String(n) })),
+    };
+    case 'shedLengthFt': return {
+      text: `What size is your shed?\n\nChoose the **length**. Width so far: **${d.shedWidthFt}'**.`,
+      input: 'choice',
+      quick: SHED_LENGTHS.map((n) => ({ label: fmtShedSize(d.shedWidthFt, n), value: String(n) })),
+    };
+    case 'shedMule': return {
+      text: `That's **${fmtShedSize(d.shedWidthFt, d.shedLengthFt)}**.\n\nWill we need to use the shed mule?`,
+      input: 'choice',
+      quick: [{ label: 'Yes', value: 'yes' }, { label: 'No', value: 'no' }],
+    };
     case 'lengthFt': return { text: `How long is the load? Our maximum is **${L.maxLengthFt} ft (${MAX_M} m)**. Feet or metres are fine.`, input: 'text', placeholder: 'e.g. 24 ft or 7 m' };
     case 'weightLbs': return {
       text: (isContainer(d.freightType)
@@ -76,7 +100,7 @@ function question(s, step = s.step) {
 }
 
 function editChoices(s) {
-  const fields = LOAD_FIELDS.filter((f) => f !== 'lengthFt' || asksLength(s.data.freightType));
+  const fields = LOAD_FIELDS.filter((f) => fieldApplies(s, f));
   if (s.intent) fields.push(...CONTACT_FIELDS.filter((f) => s.answered[f]));
   return fields.map((f) => ({ label: LABELS[f], value: 'edit:' + f })).concat([{ label: 'Distance (km)', value: 'edit:km' }]);
 }
@@ -86,11 +110,16 @@ function summaryLines(s) {
   const out = [
     `**Pickup:** ${d.pickup}`,
     `**Delivery:** ${d.delivery}`,
-    `**Freight:** ${FT_LABEL[d.freightType] || '—'}${d.lengthFt ? ' · ' + fmtFt(d.lengthFt) : ''}`,
-    `**Weight:** ${d.weightLbs ? fmtLbs(d.weightLbs) : '—'}`,
-    `**Pickup date:** ${d.pickupDate}`,
-    `**Notes:** ${d.notes || 'None'}`,
   ];
+  if (d.freightType === 'shed') {
+    out.push(`**Freight:** ${FT_LABEL.shed}`);
+    out.push(`**Shed size:** ${fmtShedSize(d.shedWidthFt, d.shedLengthFt)}`);
+    out.push(`**Shed mule:** ${d.shedMule ? 'Yes' : 'No'}`);
+  } else {
+    out.push(`**Freight:** ${FT_LABEL[d.freightType] || '—'}${d.lengthFt ? ' · ' + fmtFt(d.lengthFt) : ''}`);
+    out.push(`**Weight:** ${d.weightLbs ? fmtLbs(d.weightLbs) : '—'}`);
+  }
+  out.push(`**Pickup date:** ${d.pickupDate}`, `**Notes:** ${d.notes || 'None'}`);
   if (d.name) out.push(`**Name:** ${d.name}`);
   if (d.email || d.phone) out.push(`**Contact:** ${[d.email, d.phone].filter(Boolean).join(' · ')}`);
   if (s.distance) out.push(`**Distance:** ~${s.distance.loadedKm.toLocaleString('en-CA')} km (${Math.round(s.distance.loadedKm * 0.621371).toLocaleString('en-CA')} mi)${s.distance.source === 'customer' ? ' (your estimate)' : ' by road'}`);
@@ -108,6 +137,7 @@ function reviewMessage(s) {
     text += '\nThis is a rough estimate only, **pending confirmation by our dispatcher**; the final price depends on route, wait time, site access and current rates.';
     if (e.special.includes('hazmat')) text += '\nHazmat loads need dispatcher approval and paperwork before booking.';
   }
+  if (s.data.freightType === 'shed' && s.data.shedMule) text += `\n\n${MULE_NOTE}`;
   text += s.flags.length
     ? '\n\nWant dispatch to look at this?'
     : '\n\nWant dispatch to follow up on this estimate?';
@@ -132,7 +162,7 @@ function overLimitMessage(s) {
 // ---------- Flow helpers ----------
 function nextMissing(s) {
   for (const f of LOAD_FIELDS) {
-    if (f === 'lengthFt' && !asksLength(s.data.freightType)) continue;
+    if (!fieldApplies(s, f)) continue;
     if (!s.answered[f]) return f;
   }
   if (!s.distance) return 'distance';
@@ -146,8 +176,34 @@ function contactReady(data) {
   return V.name(data && data.name).ok && V.phone(data && data.phone).ok && V.email(data && data.email).ok;
 }
 
+function clearAnswer(s, field) {
+  delete s.data[field];
+  s.answered[field] = false;
+}
+
+function syncFreight(s, r) {
+  s.flags = s.flags.filter((x) => x.type !== 'length');
+  if (r.value === 'shed') {
+    clearAnswer(s, 'weightLbs');
+    s.flags = s.flags.filter((x) => x.type !== 'weight');
+    if (s.data.shedLengthFt) {
+      s.data.lengthFt = s.data.shedLengthFt;
+      s.answered.lengthFt = true;
+    } else clearAnswer(s, 'lengthFt');
+    return;
+  }
+  const hadShed = !!(s.data.shedWidthFt || s.data.shedLengthFt || s.answered.shedMule);
+  clearAnswer(s, 'shedWidthFt');
+  clearAnswer(s, 'shedLengthFt');
+  clearAnswer(s, 'shedMule');
+  if (r.lengthFt) {
+    s.data.lengthFt = r.lengthFt;
+    s.answered.lengthFt = true;
+  } else if (hadShed || s.data.lengthFt === 20 || s.data.lengthFt === 40) clearAnswer(s, 'lengthFt');
+}
+
 function applyField(s, field, raw) {
-  const vmap = { lengthFt: 'length', weightLbs: 'weight', pickup: 'place', delivery: 'place' };
+  const vmap = { lengthFt: 'length', weightLbs: 'weight', pickup: 'place', delivery: 'place', shedWidthFt: 'shedWidth', shedLengthFt: 'shedLength', shedMule: 'shedMule' };
   const r = V[vmap[field] || field](raw);
   if (r.overLimit) {
     s.pendingLimit = { type: r.overLimit, value: r.overLimit === 'length' ? r.lengthFt : r.weightLbs, field: r.overLimit === 'length' && field === 'freightType' ? 'freightType' : field };
@@ -156,9 +212,10 @@ function applyField(s, field, raw) {
   if (!r.ok) return { error: r.error };
   s.data[field] = r.value;
   s.answered[field] = true;
-  if (field === 'freightType') {
-    if (r.lengthFt) { s.data.lengthFt = r.lengthFt; s.answered.lengthFt = true; }
-    else if (s.data.lengthFt === 20 || s.data.lengthFt === 40) { delete s.data.lengthFt; s.answered.lengthFt = false; }
+  if (field === 'freightType') syncFreight(s, r);
+  if (field === 'shedLengthFt') {
+    s.data.lengthFt = r.value;
+    s.answered.lengthFt = true;
     s.flags = s.flags.filter((x) => x.type !== 'length');
   }
   if (field === 'lengthFt') s.flags = s.flags.filter((x) => x.type !== 'length');
@@ -167,15 +224,35 @@ function applyField(s, field, raw) {
   return { ok: true };
 }
 
+function quoteInputs(s) {
+  const shed = s.data.freightType === 'shed';
+  return {
+    freightType: s.data.freightType,
+    // Shed loaded km uses shedPerKmByWidth for the selected width. Weight is not charged.
+    // lengthFt is the selected shed length; the current formula does not price by length.
+    weightLbs: shed ? undefined : s.data.weightLbs,
+    shedWidthFt: shed ? s.data.shedWidthFt : undefined,
+    lengthFt: shed ? s.data.shedLengthFt : s.data.lengthFt,
+    loadedKm: s.distance.loadedKm,
+    deadheadKm: s.distance.deadheadKm,
+    notes: s.data.notes,
+  };
+}
+
+function decorateEstimate(s) {
+  if (!s.estimate) return;
+  if (s.data.freightType === 'shed' && s.data.shedMule) s.estimate.muleNote = MULE_NOTE;
+  else delete s.estimate.muleNote;
+}
+
 async function ensureDistanceAndEstimate(s) {
   if (!s.distance) {
     const d = await estimateDistance(s.data.pickup, s.data.delivery);
     if (!d) return 'km';
     s.distance = d;
   }
-  s.estimate = s.flags.length ? null : pricing.estimate({
-    freightType: s.data.freightType, weightLbs: s.data.weightLbs, loadedKm: s.distance.loadedKm, deadheadKm: s.distance.deadheadKm, notes: s.data.notes,
-  });
+  s.estimate = s.flags.length ? null : pricing.estimate(quoteInputs(s));
+  decorateEstimate(s);
   return 'review';
 }
 
@@ -183,9 +260,8 @@ async function advance(s) {
   let n = nextMissing(s);
   if (n === 'distance') n = await ensureDistanceAndEstimate(s);
   else if ((n === 'review' || n === 'submit') && s.distance) {
-    s.estimate = s.flags.length ? null : pricing.estimate({
-      freightType: s.data.freightType, weightLbs: s.data.weightLbs, loadedKm: s.distance.loadedKm, deadheadKm: s.distance.deadheadKm, notes: s.data.notes,
-    });
+    s.estimate = s.flags.length ? null : pricing.estimate(quoteInputs(s));
+    decorateEstimate(s);
   }
   s.step = n;
   if (n === 'review') s.editing = false;
@@ -285,6 +361,7 @@ async function handle(sessionId, rawText, onSubmit) {
       s.editing = true;
       if (em[1] === 'km') { s.step = 'km'; return reply(s, ['No problem — let me know the approximate distance.']); }
       if (!FIELDS.includes(em[1])) return reply(s, ['Please choose one of the options below.']);
+      if (LOAD_FIELDS.includes(em[1]) && !fieldApplies(s, em[1])) return reply(s, ['Please choose one of the options below.']);
       s.step = em[1];
       return reply(s);
     }
@@ -309,8 +386,10 @@ async function handle(sessionId, rawText, onSubmit) {
     if (ai) {
       const errors = [];
       let hitLimit = false;
-      for (const [k, v] of Object.entries(ai.fields || {})) {
+      const extracted = Object.entries(ai.fields || {}).sort((a, b) => (a[0] === 'freightType' ? -1 : b[0] === 'freightType' ? 1 : 0));
+      for (const [k, v] of extracted) {
         if (!scope.includes(k) || v === null || v === undefined || v === '') continue;
+        if (k !== 'freightType' && !fieldApplies(s, k)) continue;
         const r = applyField(s, k, String(v));
         if (r.overLimit) { s.pendingLimit.raw = String(v); hitLimit = true; break; }
         if (r.error) errors.push(r.error);

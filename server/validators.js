@@ -9,6 +9,23 @@ const LBS_PER_KG = 2.20462;
 
 const fmtLbs = (lbs) => `${Math.round(lbs).toLocaleString('en-CA')} lbs (${Math.round(lbs / LBS_PER_KG).toLocaleString('en-CA')} kg)`;
 const fmtFt = (ft) => `${+ft.toFixed(1)} ft (${(ft / FT_PER_M).toFixed(1)} m)`;
+const fmtShedSize = (widthFt, lengthFt) => `${widthFt}' x ${lengthFt}'`;
+
+// Shed quotes pick a width, then a length. These are the only accepted sizes.
+const SHED_WIDTHS = [8, 10, 12, 14];
+const SHED_LENGTHS = Array.from({ length: ((50 - 8) / 2) + 1 }, (_, i) => 8 + i * 2);
+const MULE_NOTE = 'Check with dispatcher for mule pricing.';
+
+function shedFeet(s, allowed, noun) {
+  const raw = String(s || '').trim().toLowerCase().replace(/,/g, '');
+  const m = raw.match(/^(\d+)\s*(?:ft|feet|foot|')?$/);
+  const n = m ? +m[1] : NaN;
+  if (!allowed.includes(n)) {
+    const list = noun === 'width' ? allowed.map((v) => `${v} ft`).join(', ') : 'every 2 ft from 8 ft through 50 ft';
+    return { ok: false, error: `Please choose a shed ${noun}: ${list}.` };
+  }
+  return { ok: true, value: n };
+}
 
 const V = {
   name(s) {
@@ -55,6 +72,14 @@ const V = {
     if (/^general$|general|freight|pallet|skid|crate|machine|equipment|lumber|material|other|ltl|ftl|flatbed|load/.test(s)) return { ok: true, value: 'general' };
     if (/container/.test(s)) return { ok: false, error: 'Is that a 20 ft or a 40 ft container?' };
     return { ok: false, error: 'Please choose one: 20 ft container, 40 ft container, sheds, or general freight.' };
+  },
+  shedWidth(s) { return shedFeet(s, SHED_WIDTHS, 'width'); },
+  shedLength(s) { return shedFeet(s, SHED_LENGTHS, 'length'); },
+  shedMule(s) {
+    const t = String(s || '').trim().toLowerCase();
+    if (/^(yes|y|yeah|yep)$/.test(t)) return { ok: true, value: true };
+    if (/^(no|n|nope)$/.test(t)) return { ok: true, value: false };
+    return { ok: false, error: 'Please choose Yes or No for the shed mule.' };
   },
   length(s) {
     s = String(s || '').trim().toLowerCase().replace(/,/g, '');
@@ -112,4 +137,4 @@ const V = {
     return { ok: true, value: Math.round(v) };
   },
 };
-module.exports = { V, fmtLbs, fmtFt, LBS_PER_KG, FT_PER_M };
+module.exports = { V, fmtLbs, fmtFt, fmtShedSize, SHED_WIDTHS, SHED_LENGTHS, MULE_NOTE, LBS_PER_KG, FT_PER_M };

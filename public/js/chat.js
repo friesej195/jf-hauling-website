@@ -59,6 +59,7 @@
     const d = document.createElement('div'); d.className = 'qa-est';
     d.innerHTML = `<small>Ballpark estimate (${esc(e.taxNote)})</small><div class="amt">${money(e.low)} – ${money(e.high)} <span style="font-size:1rem">${esc(e.currency)}</span></div>
       <small>Pending confirmation by our dispatcher.</small>
+      ${e.muleNote ? `<div class="qa-mule">${esc(e.muleNote)}</div>` : ''}
       <details><summary>How we got this</summary><table>${e.lines.map((l) => `<tr><td>${esc(l.label)}</td><td>${money(l.amount.toFixed(0))}</td></tr>`).join('')}
       ${e.minimumApplied ? '<tr><td>Minimum charge applied</td><td></td></tr>' : ''}<tr><td><b>Midpoint</b></td><td><b>${money(e.subtotal)}</b></td></tr></table></details>
       ${e.isExample ? '<span class="ex">SAMPLE RATES — FOR DEMONSTRATION</span>' : ''}`;
@@ -71,11 +72,15 @@
   }
   function controls(r) {
     ui.quick.innerHTML = '';
+    ui.quick.classList.toggle('qa-widths', r.step === 'shedWidthFt');
+    ui.quick.classList.toggle('qa-lengths', r.step === 'shedLengthFt');
     (r.quickReplies || []).forEach((q) => {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = q.label;
       b.addEventListener('click', () => { if (q.value === 'limit:call') { const a = document.querySelector('a[href^="tel:"]'); if (a) location.href = a.href; } send(q.value, q.label); });
       ui.quick.appendChild(b);
     });
+    const choiceOnly = r.input === 'choice';
+    ui.form.hidden = choiceOnly;
     const types = { email: 'email', tel: 'tel', date: 'date' };
     ui.input.type = types[r.input] || 'text';
     if (r.input === 'date') {
@@ -109,7 +114,7 @@
     try { const r = await call('/api/chat', { sessionId: state.sessionId, text: value }); await pause(350); typing(false); render(r); }
     catch (e) { typing(false); addItem({ from: 'bot', text: e.message, warn: true }); if (state.last) controls(state.last); }
     busy = false;
-    if (!('ontouchstart' in window)) ui.input.focus();
+    if (!('ontouchstart' in window) && !ui.form.hidden) ui.input.focus();
   }
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   async function begin() {

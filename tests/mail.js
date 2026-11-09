@@ -289,6 +289,8 @@ async function submitQuote(port, answers) {
   check('quote submission is stored under DATA_DIR', quote.body.done === true && quoteFile.length === 1 && quoteFile[0].id === ref);
 
   const review = await submitQuote(server.port, ['Listowel', 'Kitchener, ON', 'general', '30 ft', '25000 lbs', 'limit:continue', 'ASAP', 'none', '80 km', 'intent:request', 'Bob Heavy', '2265550199', CUSTOMER]);
+  const shedQuote = await submitQuote(server.port, ['Listowel, ON', 'Guelph, ON', 'shed', '8', '12', 'yes', 'Flexible', 'none', '90 km', 'intent:request', 'Shed Owner', '5195550166', CUSTOMER]);
+  const shedNo = await submitQuote(server.port, ['Listowel, ON', 'Owen Sound, ON', 'shed', '10', '24', 'no', 'ASAP', 'none', '40 km', 'intent:request', 'No Mule', '2265550101', CUSTOMER]);
   const contact = await post(server.port, '/api/contact', { name: 'Test Person', email: CUSTOMER, phone: '5195550199', message: 'Need a call about the lane.' });
   const messages = JSON.parse(fs.readFileSync(path.join(dataDir, 'messages.json'), 'utf8'));
   check('contact message is stored under the same DATA_DIR', contact.status === 200 && contact.body.ok === true && messages.length === 1);
@@ -296,6 +298,8 @@ async function submitQuote(port, answers) {
   const sends = readLog(server.mailLog).filter((e) => e.event === 'resend');
   const quoteSend = sends.find((e) => e.subject.includes(ref));
   const reviewSend = sends.find((e) => e.subject.includes(review.body.reference) && /NEEDS REVIEW/.test(e.subject));
+  const shedSend = sends.find((e) => shedQuote.body.reference && e.subject.includes(shedQuote.body.reference));
+  const shedNoSend = sends.find((e) => shedNo.body.reference && e.subject.includes(shedNo.body.reference));
   const contactSend = sends.find((e) => e.subject.includes(messages[0].id));
   const quoteParts = [
     ['reference', `Quote reference: ${ref}`],
@@ -314,6 +318,12 @@ async function submitQuote(port, answers) {
   if (quoteSend && !/Estimate: \$\d+–\$\d+ CAD/.test(quoteSend.text)) missingParts.push('estimate');
   check('quote alert includes the dispatch details', quoteSend && quoteSend.toIsOwner && !quoteSend.toIsCustomer && quoteSend.replyIsCustomer && quoteSend.from === FROM && missingParts.length === 0, missingParts.join(','));
   check('over-limit alert says review and includes the flag', review.body.done === true && reviewSend && /Estimate: none shown/.test(reviewSend.text) && /Flags\n- Weight/.test(reviewSend.text) && reviewSend.replyIsCustomer);
+  const shedSaved = quoteFile.length >= 0 && JSON.parse(fs.readFileSync(path.join(dataDir, 'quotes.json'), 'utf8')).find((q) => q.id === shedQuote.body.reference);
+  const shedLine = shedSaved && (shedSaved.estimate.lines || []).find((l) => l.label === 'Distance: 90 km × $3.00/km (8 ft wide shed)');
+  check('shed alert includes width x length, mule yes, and the mule note, without a weight', shedQuote.body.done === true && shedSend && shedSend.toIsOwner && shedSend.replyIsCustomer && shedSend.text.includes("Shed size: 8' x 12'") && shedSend.text.includes('Shed mule: Yes') && shedSend.text.includes('Check with dispatcher for mule pricing.') && !/^Weight:/m.test(shedSend.text) && shedSaved && shedSaved.shipment.shedWidthFt === 8 && shedSaved.shipment.shedLengthFt === 12 && shedSaved.shipment.shedSize === "8' x 12'" && shedSaved.shipment.shedMule === true && shedSaved.shipment.muleNote === 'Check with dispatcher for mule pricing.' && shedSaved.shipment.weightLbs == null && shedLine && shedLine.amount === 270 && !(shedSaved.estimate.lines || []).some((l) => /Heavy load/.test(l.label)));
+  const savedNo = JSON.parse(fs.readFileSync(path.join(dataDir, 'quotes.json'), 'utf8')).find((q) => q.id === shedNo.body.reference);
+  const noLine = savedNo && (savedNo.estimate.lines || []).find((l) => l.label === 'Distance: 40 km × $3.50/km (10 ft wide shed)');
+  check('shed alert with mule no omits the mule pricing note', shedNo.body.done === true && shedNoSend && shedNoSend.text.includes("Shed size: 10' x 24'") && shedNoSend.text.includes('Shed mule: No') && !shedNoSend.text.includes('Check with dispatcher for mule pricing.') && noLine && noLine.amount === 140 && savedNo.estimate.minimumApplied === true && savedNo.estimate.subtotal === 350);
   check('contact alert goes to dispatch with reply-to set', contactSend && contactSend.toIsOwner && contactSend.replyIsCustomer && contactSend.text.includes(`Message reference: ${messages[0].id}`) && contactSend.text.includes('Need a call about the lane.') && contactSend.text.includes('Phone: 5195550199'));
 
   const logs = fs.readFileSync(server.out, 'utf8') + fs.readFileSync(server.err, 'utf8');
@@ -321,7 +331,7 @@ async function submitQuote(port, answers) {
 
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:isolated-test-only').toString('base64') };
   const admin = await (await fetch(`http://127.0.0.1:${server.port}/admin/api/quotes`, { headers: auth })).json();
-  check('admin shows mail as enabled while Resend is configured', admin.emailEnabled === true && admin.quotes.length === 2 && admin.messages.length === 1);
+  check('admin shows mail as enabled while Resend is configured', admin.emailEnabled === true && admin.quotes.length === 4 && admin.messages.length === 1);
   const adminHtml = await (await fetch(`http://127.0.0.1:${server.port}/admin`, { headers: auth })).text();
   check('admin page names Resend as the way to turn alerts on', adminHtml.includes('RESEND_API_KEY') && !adminHtml.includes('set SMTP_* variables'));
   await stop(server.child);

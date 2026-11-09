@@ -60,7 +60,9 @@ module.exports = {
     isExample: true,             // set to false once you have entered your real rates
     currency: 'CAD',
     baseFee: 150,                // EXAMPLE flat fee per job
-    perKmLoaded: 2.75,           // EXAMPLE rate per km, pickup → delivery
+    perKmLoaded: 2.75,           // EXAMPLE rate per km, pickup → delivery (containers and general freight)
+    // Sheds replace perKmLoaded with a rate for the selected width. No weight charge.
+    shedPerKmByWidth: { 8: 3.0, 10: 3.5, 12: 5, 14: 8 },
     perKmDeadhead: 1.25,         // EXAMPLE rate per km, Listowel base → pickup (set 0 to ignore)
     deadheadFreeKm: 50,          // first N km from base to pickup are not charged
     minimumCharge: 350,          // EXAMPLE minimum job price
