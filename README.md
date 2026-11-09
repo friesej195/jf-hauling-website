@@ -47,7 +47,8 @@ These are made-up sample rates so the estimator works. **Replace them with your 
 | Setting | Example value | What it does |
 |---|---|---|
 | `baseFee` | $150 | Flat fee on every job |
-| `perKmLoaded` | $2.75/km | Per km from pickup to delivery |
+| `perKmLoaded` | $2.75/km | Per km from pickup to delivery for containers and general freight |
+| `shedPerKmByWidth` | 8 ft $3.00 · 10 ft $3.50 · 12 ft $5.00 · 14 ft $8.00 | Shed per-km rate by width. Replaces `perKmLoaded` for sheds. No weight charge. Shown as `Distance: X km × $5.00/km (12 ft wide shed)` |
 | `perKmDeadhead` | $1.25/km | Per km driving from Listowel to the pickup (0 = don't charge) |
 | `deadheadFreeKm` | 50 km | First km from Listowel to pickup that are free |
 | `minimumCharge` | $350 | Lowest price for any job |
@@ -58,7 +59,7 @@ These are made-up sample rates so the estimator works. **Replace them with your 
 | `rangePercent` | ±15 % | Estimate is shown as a range (e.g. $530–$710) |
 | `taxNote` | "plus applicable HST" | Shown beside every estimate |
 
-**How an estimate is worked out:** base fee + (km × per-km rate) + travel to pickup beyond the free km + container surcharge + heavy-weight charge + special-handling add-ons (+ fuel %), never below the minimum, then shown as a ± range. Customers can open "How we got this" to see the breakdown.
+**How an estimate is worked out:** base fee + (km × per-km rate) + travel to pickup beyond the free km + container surcharge + heavy-weight charge + special-handling add-ons (+ fuel %), never below the minimum, then shown as a ± range. Sheds use `shedPerKmByWidth` instead of `perKmLoaded` and do not get a weight charge. Customers can open "How we got this" to see the breakdown.
 
 ### Limits (`config.js` → `limits`)
 `maxLengthFt: 40`, `maxWeightLbs: 20000`. Anything over is politely refused online, the customer is offered your phone number, and they can still send it in as a **"needs review"** request (no price shown).

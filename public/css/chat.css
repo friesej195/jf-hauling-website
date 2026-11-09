@@ -20,8 +20,14 @@
 .qa-est table{width:100%;border-collapse:collapse;margin-top:.4rem}
 .qa-est td{padding:2px 0}.qa-est td:last-child{text-align:right}
 .qa-est .ex{display:inline-block;margin-top:.5rem;background:rgba(246,185,19,.15);color:var(--yellow);border-radius:6px;padding:2px 8px;font-size:.75rem;font-weight:700;letter-spacing:.5px}
+.qa-est .qa-mule{margin-top:.75rem;background:rgba(246,185,19,.16);color:var(--yellow);border-radius:8px;padding:8px 10px;font-weight:700;font-size:.95rem;line-height:1.35}
 .qa-quick{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 10px;background:#f4f4f3}
 .qa-quick button{border:1.5px solid var(--accent);background:#fff;color:var(--charcoal);font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;font-size:.9rem;font-family:inherit}
+.qa-quick.qa-widths,.qa-quick.qa-lengths{display:grid;gap:8px}
+.qa-quick.qa-widths{grid-template-columns:repeat(4,minmax(0,1fr))}
+.qa-quick.qa-lengths{grid-template-columns:repeat(3,minmax(0,1fr))}
+.qa-quick.qa-widths button,.qa-quick.qa-lengths button{border-radius:12px;padding:10px 4px;min-height:44px;text-align:center;font-size:.86rem;white-space:nowrap}
+.qa-form[hidden]{display:none}
 .qa-quick button:hover{background:var(--accent);color:var(--accent-ink)}
 .qa-form{display:flex;gap:8px;padding:12px;border-top:1px solid #e4e5e7;background:#fff}
 .qa-form input{flex:1;min-width:0;border:1.5px solid #d2d4d7;border-radius:12px;padding:11px 13px;font:inherit;background:#fff;color:#1f2125}

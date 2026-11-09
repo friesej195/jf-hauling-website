@@ -8,7 +8,7 @@ const store = require('./store');
 const dispatcher = require('./dispatcher');
 const mailer = require('./mailer');
 const llm = require('./llm');
-const { fmtLbs, fmtFt, V } = require('./validators');
+const { fmtLbs, fmtFt, fmtShedSize, MULE_NOTE, V } = require('./validators');
 
 const app = express();
 app.disable('x-powered-by');
@@ -107,8 +107,16 @@ function quoteAlert(rec) {
     `Pickup: ${dash(sh.pickup)}`,
     `Drop-off: ${dash(sh.delivery)}`,
     `Freight: ${dash(sh.freightTypeLabel)}`,
-    `Length: ${sh.lengthFt ? fmtFt(sh.lengthFt) : '—'}`,
-    `Weight: ${sh.weightLbs ? fmtLbs(sh.weightLbs) : '—'}`,
+    ...(sh.freightType === 'shed'
+      ? [
+        `Shed size: ${dash(sh.shedSize || (sh.shedWidthFt && sh.shedLengthFt ? fmtShedSize(sh.shedWidthFt, sh.shedLengthFt) : ''))}`,
+        `Shed mule: ${sh.shedMule ? 'Yes' : 'No'}`,
+        ...(sh.shedMule ? [sh.muleNote || MULE_NOTE] : []),
+      ]
+      : [
+        `Length: ${sh.lengthFt ? fmtFt(sh.lengthFt) : '—'}`,
+        `Weight: ${sh.weightLbs ? fmtLbs(sh.weightLbs) : '—'}`,
+      ]),
     `Pickup date: ${dash(sh.pickupDate)}`,
     `Notes: ${dash(sh.notes)}`,
     '',
@@ -138,12 +146,21 @@ async function saveQuote(s) {
   s.data.phone = phone.value;
   s.data.email = email.value;
   const id = makeRef();
+  const isShed = s.data.freightType === 'shed';
+  const shedSize = isShed ? fmtShedSize(s.data.shedWidthFt, s.data.shedLengthFt) : '';
   const rec = {
     id, createdAt: new Date().toISOString(), status: s.flags.length ? 'needs review' : 'new', mode: s.mode, intent: s.intent === 'more-info' ? 'more-info' : 'request',
     customer: { name: s.data.name, company: s.data.company, email: s.data.email, phone: s.data.phone },
     shipment: {
       pickup: s.data.pickup, delivery: s.data.delivery, freightType: s.data.freightType, freightTypeLabel: dispatcher.FT_LABEL[s.data.freightType],
-      freightTypeNote: s.data.freightTypeNote || '', lengthFt: s.data.lengthFt ?? null, weightLbs: s.data.weightLbs ?? null,
+      freightTypeNote: s.data.freightTypeNote || '',
+      lengthFt: isShed ? (s.data.shedLengthFt ?? null) : (s.data.lengthFt ?? null),
+      weightLbs: isShed ? null : (s.data.weightLbs ?? null),
+      shedWidthFt: isShed ? (s.data.shedWidthFt ?? null) : null,
+      shedLengthFt: isShed ? (s.data.shedLengthFt ?? null) : null,
+      shedSize,
+      shedMule: isShed ? !!s.data.shedMule : null,
+      muleNote: isShed && s.data.shedMule ? MULE_NOTE : '',
       pickupDate: s.data.pickupDate, notes: s.data.notes,
     },
     distance: s.distance, estimate: s.estimate, flags: s.flags, transcript: s.transcript,
@@ -213,9 +230,9 @@ app.post('/admin/api/:kind/:id/status', adminAuth, (req, res) => {
   r ? res.json(r) : res.status(404).json({ error: 'not found' });
 });
 app.get('/admin/quotes.csv', adminAuth, (req, res) => {
-  const cols = ['id', 'createdAt', 'status', 'name', 'company', 'email', 'phone', 'pickup', 'delivery', 'freight', 'lengthFt', 'weightLbs', 'pickupDate', 'notes', 'km', 'estimateLow', 'estimateHigh', 'flags'];
+  const cols = ['id', 'createdAt', 'status', 'name', 'company', 'email', 'phone', 'pickup', 'delivery', 'freight', 'lengthFt', 'weightLbs', 'shedWidthFt', 'shedLengthFt', 'shedMule', 'muleNote', 'pickupDate', 'notes', 'km', 'estimateLow', 'estimateHigh', 'flags'];
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = store.readAll('quotes').map((r) => [r.id, r.createdAt, r.status, r.customer.name, r.customer.company, r.customer.email, r.customer.phone, r.shipment.pickup, r.shipment.delivery, r.shipment.freightTypeLabel, r.shipment.lengthFt, r.shipment.weightLbs, r.shipment.pickupDate, r.shipment.notes, r.distance?.loadedKm, r.estimate?.low, r.estimate?.high, (r.flags || []).map((f) => f.message).join(' ')].map(q).join(','));
+  const rows = store.readAll('quotes').map((r) => [r.id, r.createdAt, r.status, r.customer.name, r.customer.company, r.customer.email, r.customer.phone, r.shipment.pickup, r.shipment.delivery, r.shipment.freightTypeLabel, r.shipment.lengthFt, r.shipment.weightLbs, r.shipment.shedWidthFt, r.shipment.shedLengthFt, r.shipment.shedMule === true ? 'Yes' : r.shipment.shedMule === false ? 'No' : '', r.shipment.muleNote, r.shipment.pickupDate, r.shipment.notes, r.distance?.loadedKm, r.estimate?.low, r.estimate?.high, (r.flags || []).map((f) => f.message).join(' ')].map(q).join(','));
   res.type('text/csv').attachment('quote-requests.csv').send([cols.join(','), ...rows].join('\n'));
 });
 

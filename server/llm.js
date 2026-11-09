@@ -14,21 +14,32 @@ const FIELD_HELP = {
   pickup: 'pickup address or city',
   delivery: 'delivery address or city',
   freightType: 'one of "container20", "container40", "shed", "general" (if they mention another container size, return it verbatim e.g. "53 ft container"; a shed or portable building is "shed")',
-  lengthFt: 'load length WITH units as text, e.g. "24 ft" or "7 m" (general freight and sheds)',
-  weightLbs: 'weight WITH units as text, e.g. "15000 lbs" or "6000 kg"',
+  lengthFt: 'load length WITH units as text, e.g. "24 ft" or "7 m" (general freight only — never for sheds)',
+  weightLbs: 'weight WITH units as text, e.g. "15000 lbs" or "6000 kg" (containers and general freight only — never for sheds)',
+  shedWidthFt: 'shed width in feet, one of 8, 10, 12, 14 (sheds only)',
+  shedLengthFt: 'shed length in feet, an even number from 8 through 50 (sheds only)',
+  shedMule: '"yes" or "no" — whether the shed mule is needed (sheds only; never invent a mule price)',
   pickupDate: 'pickup date as YYYY-MM-DD, or "ASAP"/"Flexible"',
   notes: 'special notes (hazmat, tailgate, liftgate, appointments, access), or "none"',
 };
 
+function skipField(s, f) {
+  const shed = s.data.freightType === 'shed';
+  if ((f === 'shedWidthFt' || f === 'shedLengthFt' || f === 'shedMule') && !shed) return true;
+  if (f === 'lengthFt' && s.data.freightType && s.data.freightType !== 'general') return true;
+  if (f === 'weightLbs' && shed) return true;
+  return false;
+}
+
 async function interpret(s, userText, nextField, FIELDS) {
   const B = config.business;
   const known = Object.fromEntries(FIELDS.filter((f) => s.answered[f]).map((f) => [f, s.data[f]]));
-  const missing = FIELDS.filter((f) => !s.answered[f] && !(f === 'lengthFt' && s.data.freightType && s.data.freightType !== 'general' && s.data.freightType !== 'shed'));
+  const missing = FIELDS.filter((f) => !s.answered[f] && !skipField(s, f));
   const today = new Date().toISOString().slice(0, 10);
   const system = `You are the friendly online quote assistant for ${B.name}, a trucking company based in Listowel, Ontario, Canada offering flat deck hauling with 3500 dually (dual rear wheel) pickup trucks pulling gooseneck flat deck trailers (NOT semis or tractor-trailers) and moves shipping containers (20 ft and 40 ft), sheds, and general freight across ${B.serviceArea}. Limits: max load length ${config.limits.maxLengthFt} ft, max payload ${config.limits.maxWeightLbs} lbs. Use Canadian English. Today is ${today}.
 Your job: read the customer's latest message and extract any of these fields they provided: ${JSON.stringify(FIELD_HELP)}.
 Already collected: ${JSON.stringify(known)}. Still missing: ${JSON.stringify(missing)}. The question currently being asked is about "${nextField}".
-Rules: never invent values; only extract what the customer actually said. Never quote prices or promise availability — the server computes estimates. Never say a load over the limits is OK. Do not ask for name, phone or email unless that is the current missing field — the load (pickup, drop-off, freight, size, weight, date, notes) comes first, and contact details are collected only after the estimate.
+Rules: never invent values; only extract what the customer actually said. Never quote prices or promise availability — the server computes estimates. Never say a load over the limits is OK. Do not ask for name, phone or email unless that is the current missing field — the load comes first, and contact details are collected only after the estimate. For sheds, never ask for weight or a typed length: ask width (8, 10, 12 or 14 ft), then length (every 2 ft from 8 through 50), then whether a shed mule is needed. Do not add a price for the mule.
 Respond ONLY with JSON: {"fields": {<fieldName>: <string>}, "reply": "<one or two short sentences: acknowledge briefly (answer simple questions about the company if asked) and then ask for the NEXT missing field after applying what you extracted>"}`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20000);
