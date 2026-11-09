@@ -11,9 +11,13 @@ const llm = require('./llm');
 
 const B = config.business;
 const L = config.limits;
-const FIELDS = ['name', 'company', 'email', 'phone', 'pickup', 'delivery', 'freightType', 'lengthFt', 'weightLbs', 'pickupDate', 'notes'];
+// Load details come first so a ballpark price does not require contact info.
+// Name, phone and email are collected only after the customer asks dispatch to follow up.
+const LOAD_FIELDS = ['pickup', 'delivery', 'freightType', 'lengthFt', 'weightLbs', 'pickupDate', 'notes'];
+const CONTACT_FIELDS = ['name', 'phone', 'email'];
+const FIELDS = [...LOAD_FIELDS, ...CONTACT_FIELDS];
 const LABELS = {
-  name: 'Name', company: 'Company', email: 'Email', phone: 'Phone', pickup: 'Pickup', delivery: 'Delivery',
+  name: 'Name', email: 'Email', phone: 'Phone', pickup: 'Pickup', delivery: 'Delivery',
   freightType: 'Freight type', lengthFt: 'Length', weightLbs: 'Weight', pickupDate: 'Pickup date', notes: 'Special notes',
 };
 const FT_LABEL = { container20: '20 ft container', container40: '40 ft container', general: 'General freight' };
@@ -26,7 +30,7 @@ const TTL = 3 * 60 * 60 * 1000;
 setInterval(() => { const now = Date.now(); for (const [k, s] of sessions) if (now - s.touched > TTL) sessions.delete(k); }, 10 * 60 * 1000).unref();
 
 function newSession() {
-  const s = { id: crypto.randomUUID(), step: 'name', data: {}, answered: {}, flags: [], distance: null, estimate: null, editing: false, submitted: null, transcript: [], touched: Date.now(), mode: llm.enabled() ? 'ai' : 'guided' };
+  const s = { id: crypto.randomUUID(), step: 'pickup', data: {}, answered: {}, flags: [], distance: null, estimate: null, intent: null, editing: false, submitted: null, transcript: [], touched: Date.now(), mode: llm.enabled() ? 'ai' : 'guided' };
   if (sessions.size > 5000) sessions.delete(sessions.keys().next().value);
   sessions.set(s.id, s);
   return s;
@@ -36,13 +40,19 @@ function getSession(id) { const s = id && sessions.get(id); if (s) s.touched = D
 // ---------- Questions for each step ----------
 function question(s, step = s.step) {
   const d = s.data;
-  const first = d.name ? d.name.split(/\s+/)[0] : '';
   switch (step) {
-    case 'name': return { text: "Hi! Welcome to " + B.name + " — pickup and gooseneck flat deck hauling across Ontario. We haul containers, general freight and more, up to " + config.limits.maxLengthFt + " ft and " + config.limits.maxWeightLbs.toLocaleString('en-CA') + " lbs" + (B.fullyInsured ? ", and we're fully insured" : '') + ". I'll gather a few details and give you a **ballpark estimate** — a dispatcher will confirm the final price.\n\nFirst, what's your name?", input: 'text', placeholder: 'Your name' };
-    case 'company': return { text: `Thanks${first ? ', ' + first : ''}! What company are you with? (Tap "Skip" if this is a personal move.)`, input: 'text', placeholder: 'Company name', quick: [{ label: 'Skip', value: 'skip' }] };
-    case 'email': return { text: "What's the best email for your quote?", input: 'email', placeholder: 'name@company.ca' };
-    case 'phone': return { text: 'And a phone number in case dispatch needs to reach you?', input: 'tel', placeholder: '519-555-0123' };
-    case 'pickup': return { text: 'Where are we picking up? A street address is best, but a city or town works (e.g. "Listowel, ON").', input: 'text', placeholder: 'Pickup address or city' };
+    case 'name': {
+      const lead = s.editing ? '' : (s.intent === 'more-info'
+        ? 'Sure — dispatch can follow up with more detail. '
+        : "Great — we'll send this quote request to dispatch. ");
+      return { text: lead + "What's your name?", input: 'text', placeholder: 'Your name' };
+    }
+    case 'phone': return { text: 'What phone number should dispatch call? A number with the area code is required.', input: 'tel', placeholder: '519-555-0123' };
+    case 'email': return { text: 'And the email for this quote? An email address is required so dispatch can follow up.', input: 'email', placeholder: 'name@company.ca' };
+    case 'pickup': {
+      const intro = s.editing ? '' : "Hi! Welcome to " + B.name + " — pickup and gooseneck flat deck hauling across Ontario. We haul containers, general freight and more, up to " + config.limits.maxLengthFt + " ft and " + config.limits.maxWeightLbs.toLocaleString('en-CA') + " lbs" + (B.fullyInsured ? ", and we're fully insured" : '') + ". Tell me the pickup, the drop-off and the load, and I'll give you a **ballpark estimate** right away. Your name and contact details are only needed if you want dispatch to follow up.\n\n";
+      return { text: intro + 'Where are we picking up? A street address is best, but a city or town works (e.g. "Listowel, ON").', input: 'text', placeholder: 'Pickup address or city' };
+    }
     case 'delivery': return { text: 'And where is it going?', input: 'text', placeholder: 'Delivery address or city' };
     case 'freightType': return { text: 'What are we moving?', input: 'text', placeholder: 'e.g. 40 ft container', quick: [{ label: '20 ft container', value: 'container20' }, { label: '40 ft container', value: 'container40' }, { label: 'General freight', value: 'general' }] };
     case 'lengthFt': return { text: `How long is the load? Our maximum is **${L.maxLengthFt} ft (${MAX_M} m)**. Feet or metres are fine.`, input: 'text', placeholder: 'e.g. 24 ft or 7 m' };
@@ -57,17 +67,21 @@ function question(s, step = s.step) {
     case 'km': return { text: "I couldn't map that route automatically. Roughly how many **kilometres** is it from pickup to delivery? (Miles are fine too.)", input: 'text', placeholder: 'e.g. 180 km' };
     case 'review': return reviewMessage(s);
     case 'overLimit': return overLimitMessage(s);
-    case 'editPick': return { text: 'Which detail would you like to change?', input: 'none', quick: FIELDS.filter((f) => f !== 'lengthFt' || s.data.freightType === 'general').map((f) => ({ label: LABELS[f], value: 'edit:' + f })).concat([{ label: 'Distance (km)', value: 'edit:km' }]) };
+    case 'editPick': return { text: 'Which detail would you like to change?', input: 'none', quick: editChoices(s) };
     case 'done': return { text: `Your request has been sent. Reference **${s.submitted}**. A dispatcher will follow up to confirm. Need it sooner? ${callLine()}.`, input: 'none', quick: [{ label: 'Start a new quote', value: 'restart' }] };
     default: return { text: '', input: 'text' };
   }
 }
 
+function editChoices(s) {
+  const fields = LOAD_FIELDS.filter((f) => f !== 'lengthFt' || s.data.freightType === 'general');
+  if (s.intent) fields.push(...CONTACT_FIELDS.filter((f) => s.answered[f]));
+  return fields.map((f) => ({ label: LABELS[f], value: 'edit:' + f })).concat([{ label: 'Distance (km)', value: 'edit:km' }]);
+}
+
 function summaryLines(s) {
   const d = s.data;
   const out = [
-    `**Name:** ${d.name}${d.company ? ' (' + d.company + ')' : ''}`,
-    `**Contact:** ${d.email} · ${d.phone}`,
     `**Pickup:** ${d.pickup}`,
     `**Delivery:** ${d.delivery}`,
     `**Freight:** ${FT_LABEL[d.freightType] || '—'}${d.lengthFt ? ' · ' + fmtFt(d.lengthFt) : ''}`,
@@ -75,6 +89,8 @@ function summaryLines(s) {
     `**Pickup date:** ${d.pickupDate}`,
     `**Notes:** ${d.notes || 'None'}`,
   ];
+  if (d.name) out.push(`**Name:** ${d.name}`);
+  if (d.email || d.phone) out.push(`**Contact:** ${[d.email, d.phone].filter(Boolean).join(' · ')}`);
   if (s.distance) out.push(`**Distance:** ~${s.distance.loadedKm.toLocaleString('en-CA')} km (${Math.round(s.distance.loadedKm * 0.621371).toLocaleString('en-CA')} mi)${s.distance.source === 'customer' ? ' (your estimate)' : ' by road'}`);
   return out;
 }
@@ -83,15 +99,17 @@ function reviewMessage(s) {
   const lines = summaryLines(s);
   let text = "Here's what I have:\n" + lines.join('\n');
   if (s.flags.length) {
-    text += `\n\n⚠️ **Needs dispatcher review:** ${s.flags.map((f) => f.message).join(' ')} We can't give an online estimate for this one, but we'd be glad to talk it through — ${callLine()}, or submit and we'll contact you.`;
+    text += `\n\n⚠️ **Needs dispatcher review:** ${s.flags.map((f) => f.message).join(' ')} We can't give an online estimate for this one, but we'd be glad to talk it through — ${callLine()}, or ask us to follow up and we'll be in touch.`;
   } else if (s.estimate) {
     const e = s.estimate;
     text += `\n\n**Ballpark estimate: $${e.low.toLocaleString('en-CA')} – $${e.high.toLocaleString('en-CA')} ${e.currency}** (${e.taxNote}).`;
     text += '\nThis is a rough estimate only, **pending confirmation by our dispatcher**; the final price depends on route, wait time, site access and current rates.';
     if (e.special.includes('hazmat')) text += '\nHazmat loads need dispatcher approval and paperwork before booking.';
   }
-  text += '\n\nShall I send this request to dispatch?';
-  const quick = [{ label: 'Submit request', value: 'submit' }, { label: 'Change something', value: 'edit' }];
+  text += s.flags.length
+    ? '\n\nWant dispatch to look at this?'
+    : '\n\nWant dispatch to follow up on this estimate?';
+  const quick = [{ label: 'Request this quote', value: 'intent:request' }, { label: 'Ask for more info', value: 'intent:more' }, { label: 'Change something', value: 'edit' }];
   if (s.distance && s.distance.source !== 'customer') quick.push({ label: 'Distance looks wrong', value: 'edit:km' });
   quick.push({ label: 'Start over', value: 'restart' });
   return { text, input: 'none', quick };
@@ -111,12 +129,19 @@ function overLimitMessage(s) {
 
 // ---------- Flow helpers ----------
 function nextMissing(s) {
-  for (const f of FIELDS) {
+  for (const f of LOAD_FIELDS) {
     if (f === 'lengthFt' && s.data.freightType !== 'general') continue;
     if (!s.answered[f]) return f;
   }
   if (!s.distance) return 'distance';
-  return 'review';
+  // Contact details are asked only after they choose to send this to dispatch.
+  if (!s.intent) return 'review';
+  for (const f of CONTACT_FIELDS) if (!s.answered[f]) return f;
+  return 'submit';
+}
+
+function contactReady(data) {
+  return V.name(data && data.name).ok && V.phone(data && data.phone).ok && V.email(data && data.email).ok;
 }
 
 function applyField(s, field, raw) {
@@ -155,9 +180,37 @@ async function ensureDistanceAndEstimate(s) {
 async function advance(s) {
   let n = nextMissing(s);
   if (n === 'distance') n = await ensureDistanceAndEstimate(s);
-  else if (n === 'review') await ensureDistanceAndEstimate(s);
+  else if ((n === 'review' || n === 'submit') && s.distance) {
+    s.estimate = s.flags.length ? null : pricing.estimate({
+      freightType: s.data.freightType, weightLbs: s.data.weightLbs, loadedKm: s.distance.loadedKm, deadheadKm: s.distance.deadheadKm, notes: s.data.notes,
+    });
+  }
   s.step = n;
   if (n === 'review') s.editing = false;
+}
+
+async function finishSubmit(s, onSubmit) {
+  if (s.submitted) { s.step = 'done'; return reply(s); }
+  if (!s.intent || !contactReady(s.data)) {
+    if (!s.intent) { s.step = 'review'; return reply(s, ['Choose "Request this quote" or "Ask for more info" when you want dispatch to follow up.']); }
+    s.step = CONTACT_FIELDS.find((f) => !s.answered[f]) || 'name';
+    return reply(s, ['Name, phone and email are all required before this can be sent to dispatch.']);
+  }
+  const ref = await onSubmit(s);
+  s.submitted = ref;
+  s.step = 'done';
+  return reply(s, ['Thank you!']);
+}
+
+async function afterAdvance(s, onSubmit, pre) {
+  if (s.step === 'submit') return finishSubmit(s, onSubmit);
+  return reply(s, pre);
+}
+
+function intentFrom(text) {
+  if (/^intent:request$/i.test(text) || /^request this quote$/i.test(text)) return 'request';
+  if (/^intent:more$/i.test(text) || /^ask for more info$/i.test(text)) return 'more-info';
+  return null;
 }
 
 function reply(s, pre = []) {
@@ -197,33 +250,34 @@ async function handle(sessionId, rawText, onSubmit) {
       else { s.data.weightLbs = Math.round(f.value); s.answered.weightLbs = true; }
       s.pendingLimit = null;
       await advance(s);
-      return reply(s, ["Okay — I've flagged this for a dispatcher to review. Let's finish the rest of the details."]);
+      return afterAdvance(s, onSubmit, ["Okay — I've flagged this for a dispatcher to review. Let's finish the rest of the details."]);
     }
-    if (/^limit:call$/i.test(text)) return reply(s, [`You can reach dispatch at **${B.phone}**. I'll keep your details here if you'd still like to submit.`]);
+    if (/^limit:call$/i.test(text)) return reply(s, [`You can reach dispatch at **${B.phone}**. The estimate stays here if you'd still like to ask dispatch to follow up.`]);
     // retry or any other text → re-ask the field (and try to parse the text as the new value)
     const field = f.field;
     s.pendingLimit = null;
     if (!/^limit:retry$/i.test(text)) {
       const r = applyField(s, field, text);
       if (r.overLimit) { s.pendingLimit.raw = text; s.step = 'overLimit'; return reply(s); }
-      if (r.ok) { await advance(s); return reply(s); }
+      if (r.ok) { await advance(s); return afterAdvance(s, onSubmit); }
     }
     s.step = field;
     return reply(s);
   }
 
-  // --- Review actions ---
+  // --- Review actions. Contact details are not saved until the customer asks to follow up. ---
   if (s.step === 'review' || s.step === 'editPick') {
-    if (/^submit$|^(yes|yep|send|submit|confirm|looks good)\b/i.test(text) && s.step === 'review') {
-      const ref = await onSubmit(s);
-      s.submitted = ref;
-      s.step = 'done';
-      return reply(s, ['Thank you!']);
+    const chosen = s.step === 'review' ? intentFrom(text) : null;
+    if (chosen) {
+      s.intent = chosen;
+      await advance(s);
+      return afterAdvance(s, onSubmit);
     }
     const em = text.match(/^edit:(\w+)$/);
     if (em) {
       s.editing = true;
       if (em[1] === 'km') { s.step = 'km'; return reply(s, ['No problem — let me know the approximate distance.']); }
+      if (!FIELDS.includes(em[1])) return reply(s, ['Please choose one of the options below.']);
       s.step = em[1];
       return reply(s);
     }
@@ -237,18 +291,19 @@ async function handle(sessionId, rawText, onSubmit) {
     if (!r.ok) return reply(s, [r.error]);
     s.distance = { loadedKm: r.value, deadheadKm: 0, source: 'customer' };
     await advance(s);
-    return reply(s, ['Thanks, got it.']);
+    return afterAdvance(s, onSubmit, ['Thanks, got it.']);
   }
 
   // --- AI mode: extract any fields from natural language ---
   const quickVals = FIELDS.includes(s.step) ? (question(s).quick || []).map((q) => q.value.toLowerCase()) : [];
   if (llm.enabled() && !quickVals.includes(text.toLowerCase())) {
-    const ai = await llm.interpret(s, text, nextMissing(s), FIELDS);
+    const scope = s.intent ? FIELDS : LOAD_FIELDS;
+    const ai = await llm.interpret(s, text, nextMissing(s), scope);
     if (ai) {
       const errors = [];
       let hitLimit = false;
       for (const [k, v] of Object.entries(ai.fields || {})) {
-        if (!FIELDS.includes(k) || v === null || v === undefined || v === '') continue;
+        if (!scope.includes(k) || v === null || v === undefined || v === '') continue;
         const r = applyField(s, k, String(v));
         if (r.overLimit) { s.pendingLimit.raw = String(v); hitLimit = true; break; }
         if (r.error) errors.push(r.error);
@@ -256,6 +311,7 @@ async function handle(sessionId, rawText, onSubmit) {
       if (hitLimit) { s.step = 'overLimit'; return reply(s); }
       const wasReview = s.step === 'review';
       await advance(s);
+      if (s.step === 'submit') return finishSubmit(s, onSubmit);
       if (errors.length) return reply(s, errors.slice(0, 1));
       // Use the model's phrasing only for normal data-collection steps; limits,
       // estimates and the review summary always come from the server.
@@ -277,7 +333,7 @@ async function handle(sessionId, rawText, onSubmit) {
   if (r.overLimit) { s.pendingLimit.raw = text; s.step = 'overLimit'; return reply(s); }
   if (r.error) return replyErrorOnly(s, r.error);
   await advance(s);
-  return reply(s);
+  return afterAdvance(s, onSubmit);
 }
 
 function replyErrorOnly(s, error) {
@@ -287,4 +343,4 @@ function replyErrorOnly(s, error) {
   return { sessionId: s.id, step: s.step, messages: [error], quickReplies: q.quick || [], input: q.input || 'text', placeholder: q.placeholder || '', mode: s.mode, estimate: null, flags: s.flags, done: false };
 }
 
-module.exports = { start, handle, summaryLines, FT_LABEL, getSession };
+module.exports = { start, handle, summaryLines, FT_LABEL, getSession, contactReady };

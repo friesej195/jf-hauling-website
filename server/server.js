@@ -8,7 +8,7 @@ const store = require('./store');
 const dispatcher = require('./dispatcher');
 const mailer = require('./mailer');
 const llm = require('./llm');
-const { fmtLbs, fmtFt } = require('./validators');
+const { fmtLbs, fmtFt, V } = require('./validators');
 
 const app = express();
 app.disable('x-powered-by');
@@ -87,9 +87,21 @@ function makeRef() {
 }
 
 async function saveQuote(s) {
+  const name = V.name(s.data && s.data.name);
+  const phone = V.phone(s.data && s.data.phone);
+  const email = V.email(s.data && s.data.email);
+  if (!name.ok || !phone.ok || !email.ok) {
+    const err = new Error('Name, phone and email are required to submit a quote request.');
+    err.status = 400;
+    throw err;
+  }
+  s.data.name = name.value;
+  s.data.phone = phone.value;
+  s.data.email = email.value;
   const id = makeRef();
+  const followUp = s.intent === 'more-info' ? 'Ask for more info' : 'Request this quote';
   const rec = {
-    id, createdAt: new Date().toISOString(), status: s.flags.length ? 'needs review' : 'new', mode: s.mode,
+    id, createdAt: new Date().toISOString(), status: s.flags.length ? 'needs review' : 'new', mode: s.mode, intent: s.intent === 'more-info' ? 'more-info' : 'request',
     customer: { name: s.data.name, company: s.data.company, email: s.data.email, phone: s.data.phone },
     shipment: {
       pickup: s.data.pickup, delivery: s.data.delivery, freightType: s.data.freightType, freightTypeLabel: dispatcher.FT_LABEL[s.data.freightType],
@@ -101,7 +113,8 @@ async function saveQuote(s) {
   store.insert('quotes', rec);
   const sh = rec.shipment;
   const body = [
-    `New quote request ${id} (${rec.status})`, '',
+    `New quote request ${id} (${rec.status})`,
+    `Follow-up: ${followUp}`, '',
     `Customer: ${rec.customer.name}${rec.customer.company ? ' — ' + rec.customer.company : ''}`,
     `Email: ${rec.customer.email}`, `Phone: ${rec.customer.phone}`, '',
     `Pickup: ${sh.pickup}`, `Delivery: ${sh.delivery}`,
@@ -121,6 +134,7 @@ app.post('/api/chat', rateLimit(90, 60 * 1000), async (req, res) => {
     const { sessionId, text } = req.body || {};
     res.json(await dispatcher.handle(String(sessionId || ''), String(text || ''), saveQuote));
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
     console.error('[chat]', e);
     res.status(500).json({ error: `Sorry, something went wrong. Please try again or call ${B.phone}.` });
   }
