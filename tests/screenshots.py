@@ -29,7 +29,7 @@ with sync_playwright() as p:
     # Floating widget open on home
     pg.goto(BASE + '/', wait_until='networkidle'); pg.evaluate('sessionStorage.clear()'); pg.reload(wait_until='networkidle')
     pg.click('.qa-launch'); pg.wait_for_timeout(1200)
-    answer(pg, 'Jane Tester'); click_quick(pg, 'Skip')
+    answer(pg, 'Listowel, ON'); answer(pg, 'Stratford, ON')
     pg.screenshot(path=f'{OUT}/widget-desktop.png')
     pg.close()
     # Mobile home
@@ -42,7 +42,7 @@ with sync_playwright() as p:
     # Quote page mid-conversation (happy path to estimate)
     q = b.new_page(viewport={'width': 1440, 'height': 1000})
     q.goto(BASE + '/quote', wait_until='networkidle'); q.evaluate('sessionStorage.clear()'); q.reload(wait_until='networkidle'); q.wait_for_timeout(1200)
-    for t in ['Jane Tester', 'Acme Farms', 'jane@example.ca', '519-555-0100', 'Listowel, ON', 'Stratford, ON']: answer(q, t)
+    for t in ['Listowel, ON', 'Stratford, ON']: answer(q, t)
     q.screenshot(path=f'{OUT}/quote-mid-conversation.png')
     click_quick(q, '40 ft container'); answer(q, '18,000 lbs')
     q.fill('.qa-form input', '2026-11-02'); q.press('.qa-form input', 'Enter'); q.wait_for_timeout(900)
@@ -50,9 +50,7 @@ with sync_playwright() as p:
     q.screenshot(path=f'{OUT}/quote-estimate.png')
     # Over-limit case
     q.click('.qa-reset'); q.wait_for_timeout(1200)
-    for t in ['Bob Heavy']: answer(q, t)
-    click_quick(q, 'Skip')
-    for t in ['bob@example.ca', '226-555-0199', 'Listowel', 'Kitchener, ON']: answer(q, t)
+    for t in ['Listowel', 'Kitchener, ON']: answer(q, t)
     click_quick(q, 'General freight'); answer(q, '30 ft'); answer(q, '25,000 lbs')
     q.screenshot(path=f'{OUT}/quote-over-limit.png')
     q.close()
@@ -60,7 +58,7 @@ with sync_playwright() as p:
     m = b.new_page(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
     m.goto(BASE + '/', wait_until='networkidle'); m.evaluate('sessionStorage.clear()'); m.reload(wait_until='networkidle')
     m.click('.qa-launch'); m.wait_for_timeout(1200)
-    answer(m, 'Sam Smith'); answer(m, 'Smith Ag'); answer(m, 'sam@smithag.ca')
+    answer(m, 'Listowel, ON'); answer(m, 'Stratford, ON'); click_quick(m, '20 ft container')
     m.screenshot(path=f'{OUT}/widget-mobile.png')
     m.close()
     # Admin

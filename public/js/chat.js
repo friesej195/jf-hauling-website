@@ -2,23 +2,19 @@
 (function () {
   const KEY = 'qa-state-v1';
   const ICON_TRUCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16v-4h9V9h5l3 3.5 3 .5v3"/><path d="M2 16h20"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="15" cy="17.5" r="1.8"/><circle cx="19" cy="17.5" r="1.8"/></svg>';
-  const ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>';
   const ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>';
+  const LAUNCH_HTML = '<span class="qa-launch-note">Get a quote in seconds</span><span class="qa-launch-label">Get a Quote</span>';
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   const money = (n) => '$' + Number(n).toLocaleString('en-CA');
 
-  const embed = document.getElementById('qa-embed');
-  const brand = document.querySelector('.brand-name');
-  const bizName = brand ? brand.textContent : 'Dispatch';
-
   function build() {
     const el = document.createElement('div');
     el.className = 'qa';
-    el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Quote assistant');
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Instant quote');
     el.innerHTML = `
       <div class="qa-head"><div class="qa-avatar">${ICON_TRUCK}</div>
-        <div><div class="qa-title">${esc(bizName)} Dispatch</div><div class="qa-sub">Quote assistant · usually 2–3 minutes</div></div>
+        <div><div class="qa-title">Instant Quote</div><div class="qa-sub">Answer a few questions for a ballpark price. Dispatch will follow up.</div></div>
         <button class="qa-x" aria-label="Close">×</button></div>
       <div class="qa-body" aria-live="polite"></div>
       <div class="qa-quick"></div>
@@ -27,9 +23,19 @@
     return el;
   }
 
-  let ui, state = load(), busy = false, started = false;
-  function load() { try { return JSON.parse(sessionStorage.getItem(KEY)) || { sessionId: null, items: [], last: null }; } catch { return { sessionId: null, items: [], last: null }; } }
-  function save() { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+  let ui, state = { sessionId: null, items: [], last: null }, busy = false, started = false;
+  function load() {
+    try {
+      if (typeof sessionStorage === 'undefined' || !sessionStorage) return { sessionId: null, items: [], last: null };
+      return JSON.parse(sessionStorage.getItem(KEY)) || { sessionId: null, items: [], last: null };
+    } catch (e) { return { sessionId: null, items: [], last: null }; }
+  }
+  function save() {
+    try {
+      if (typeof sessionStorage === 'undefined' || !sessionStorage) return;
+      sessionStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {}
+  }
 
   function mount(container) {
     ui = build();
@@ -72,7 +78,9 @@
     });
     const types = { email: 'email', tel: 'tel', date: 'date' };
     ui.input.type = types[r.input] || 'text';
-    if (r.input === 'date') ui.input.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    if (r.input === 'date') {
+      try { ui.input.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); } catch (e) {}
+    }
     ui.input.placeholder = r.input === 'none' ? 'Choose an option above, or type here…' : (r.placeholder || 'Type your answer…');
     ui.input.autocomplete = { name: 'name', company: 'organization', email: 'email', phone: 'tel' }[r.step] || 'off';
     ui.input.disabled = !!r.done; ui.send.disabled = !!r.done;
@@ -87,6 +95,7 @@
   }
 
   async function call(url, body) {
+    if (typeof fetch !== 'function') throw new Error('Connection problem — please try again.');
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'Connection problem — please try again.');
@@ -114,20 +123,65 @@
     ui.body.innerHTML = ''; ui.quick.innerHTML = ''; started = false; begin();
   }
 
-  if (embed) {
-    mount(embed); begin();
-    document.querySelectorAll('[data-qa-prefill]').forEach((b) => b.addEventListener('click', () => { ui.input.focus(); }));
-  } else {
-    const launch = document.createElement('button');
-    launch.className = 'qa-launch'; launch.innerHTML = ICON_CHAT + '<span>Get a Quote</span>'; launch.setAttribute('aria-label', 'Open quote assistant');
-    const pop = document.createElement('div'); pop.className = 'qa-pop';
-    document.body.append(pop, launch);
-    mount(pop);
-    const open = () => { pop.classList.add('open'); launch.style.display = window.innerWidth < 560 ? 'none' : ''; begin(); setTimeout(() => ui.input.focus(), 50); };
-    const close = () => { pop.classList.remove('open'); launch.style.display = ''; };
-    launch.addEventListener('click', () => (pop.classList.contains('open') ? close() : open()));
-    ui.querySelector('.qa-x').addEventListener('click', close);
-    document.querySelectorAll('[data-open-qa]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); open(); }));
-    window.QA = { open, close };
+  function ensureLaunch() {
+    let launch = document.getElementById('qa-launch');
+    if (!launch) {
+      launch = document.createElement('a');
+      launch.id = 'qa-launch';
+      launch.className = 'qa-launch';
+      launch.href = '/quote';
+      launch.innerHTML = LAUNCH_HTML;
+      (document.body || document.documentElement).appendChild(launch);
+    }
+    return launch;
+  }
+
+  // Lift the pill above in-app browser toolbars when the visual viewport
+  // doesn't reach the bottom of the layout viewport. Safe-area CSS covers
+  // the home indicator; this only adds extra offset when a toolbar overlaps.
+  function bindViewportPin(launch) {
+    try {
+      const vv = window.visualViewport;
+      if (!vv || typeof vv.addEventListener !== 'function') return;
+      const pin = () => {
+        try {
+          const overlap = Math.max(0, Math.round((window.innerHeight || 0) - (vv.height || 0) - (vv.offsetTop || 0)));
+          const lift = overlap > 24 ? Math.min(overlap, 180) : 0;
+          launch.style.bottom = lift ? 'calc(' + lift + 'px + 14px + env(safe-area-inset-bottom, 0px))' : '';
+        } catch (e) {}
+      };
+      pin();
+      vv.addEventListener('resize', pin);
+      vv.addEventListener('scroll', pin);
+    } catch (e) {}
+  }
+
+  try {
+    const embed = document.getElementById('qa-embed');
+    state = load();
+    if (embed) {
+      const stray = document.getElementById('qa-launch');
+      if (stray) stray.hidden = true;
+      mount(embed);
+      begin();
+      document.querySelectorAll('[data-qa-prefill]').forEach((b) => b.addEventListener('click', () => { try { ui.input.focus(); } catch (e) {} }));
+    } else {
+      const launch = ensureLaunch();
+      try { if (document.body && launch.parentNode !== document.body) document.body.appendChild(launch); } catch (e) {}
+      const pop = document.createElement('div');
+      pop.className = 'qa-pop';
+      (document.body || document.documentElement).appendChild(pop);
+      mount(pop);
+      const open = () => { pop.classList.add('open'); launch.style.display = window.innerWidth < 560 ? 'none' : ''; begin(); setTimeout(() => { try { ui.input.focus(); } catch (e) {} }, 50); };
+      const close = () => { pop.classList.remove('open'); launch.style.display = ''; };
+      launch.addEventListener('click', (e) => { if (e && e.preventDefault) e.preventDefault(); pop.classList.contains('open') ? close() : open(); });
+      const x = ui.querySelector('.qa-x');
+      if (x) x.addEventListener('click', close);
+      document.querySelectorAll('[data-open-qa]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); open(); }));
+      window.QA = { open, close };
+      bindViewportPin(launch);
+    }
+  } catch (e) {
+    try { if (!document.getElementById('qa-embed')) ensureLaunch(); } catch (e2) {}
   }
 })();

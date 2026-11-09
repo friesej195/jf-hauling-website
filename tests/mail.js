@@ -283,12 +283,12 @@ async function submitQuote(port, answers) {
   const startup = fs.readFileSync(server.out, 'utf8');
   check('startup logs resend mode without the API key', startup.includes('[mailer] mode=resend') && !startup.includes(API_KEY));
 
-  const quote = await submitQuote(server.port, ['Test Person', 'skip', CUSTOMER, '5195550199', 'Listowel, ON', 'Stratford, ON', 'container20', '8000 lbs', 'Flexible', 'Tailgate needed', '120 km', 'submit']);
+  const quote = await submitQuote(server.port, ['Listowel, ON', 'Stratford, ON', 'container20', '8000 lbs', 'Flexible', 'Tailgate needed', '120 km', 'intent:request', 'Test Person', '5195550199', CUSTOMER]);
   const ref = quote.body.reference;
   const quoteFile = JSON.parse(fs.readFileSync(path.join(dataDir, 'quotes.json'), 'utf8'));
   check('quote submission is stored under DATA_DIR', quote.body.done === true && quoteFile.length === 1 && quoteFile[0].id === ref);
 
-  const review = await submitQuote(server.port, ['Bob Heavy', 'skip', CUSTOMER, '2265550199', 'Listowel', 'Kitchener, ON', 'general', '30 ft', '25000 lbs', 'limit:continue', 'ASAP', 'none', '80 km', 'submit']);
+  const review = await submitQuote(server.port, ['Listowel', 'Kitchener, ON', 'general', '30 ft', '25000 lbs', 'limit:continue', 'ASAP', 'none', '80 km', 'intent:request', 'Bob Heavy', '2265550199', CUSTOMER]);
   const contact = await post(server.port, '/api/contact', { name: 'Test Person', email: CUSTOMER, phone: '5195550199', message: 'Need a call about the lane.' });
   const messages = JSON.parse(fs.readFileSync(path.join(dataDir, 'messages.json'), 'utf8'));
   check('contact message is stored under the same DATA_DIR', contact.status === 200 && contact.body.ok === true && messages.length === 1);
@@ -328,7 +328,7 @@ async function submitQuote(port, answers) {
 
   const failDir = path.join(os.tmpdir(), `jf-http-fail-${Date.now()}`, 'data');
   const failing = await startServer(failDir, { RESEND_API_KEY: API_KEY, MAIL_FROM: FROM, NOTIFY_TO: OWNER, MOCK_MAIL_MODE: 'fail' });
-  const failedQuote = await submitQuote(failing.port, ['Test Person', 'skip', CUSTOMER, '5195550199', 'Listowel, ON', 'Stratford, ON', 'container20', '8000 lbs', 'Flexible', 'none', '50 km', 'submit']);
+  const failedQuote = await submitQuote(failing.port, ['Listowel, ON', 'Stratford, ON', 'container20', '8000 lbs', 'Flexible', 'none', '50 km', 'intent:request', 'Test Person', '5195550199', CUSTOMER]);
   const failLogs = fs.readFileSync(failing.out, 'utf8') + fs.readFileSync(failing.err, 'utf8');
   const saved = JSON.parse(fs.readFileSync(path.join(failDir, 'quotes.json'), 'utf8'));
   check('a failed alert still keeps the quote and logs the reference', failedQuote.body.done === true && saved[0].id === failedQuote.body.reference && failLogs.includes(`[mailer] failed ref=${failedQuote.body.reference} mode=resend error=HTTP 422`) && !failLogs.includes(CUSTOMER));

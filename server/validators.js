@@ -47,13 +47,14 @@ const V = {
   },
   freightType(s) {
     s = String(s || '').trim().toLowerCase();
+    if (/\bsheds?\b|portable buildings?|garden shed|bunkie/.test(s) && !/container/.test(s)) return { ok: true, value: 'shed' };
     if (/^container20$|\b20\s*(ft|foot|feet|')?\b.*(container|can|box)|^20\s*(ft|foot|feet|')?$|twenty/.test(s)) return { ok: true, value: 'container20', lengthFt: 20 };
     if (/^container40$|\b40\s*(ft|foot|feet|')?\b.*(container|can|box)|^40\s*(ft|foot|feet|')?$|forty|high\s*cube|hc\b/.test(s)) return { ok: true, value: 'container40', lengthFt: 40 };
     const big = s.match(/\b(4[5-9]|5[0-9])\s*(ft|foot|feet|')?/);
     if (big && /container|can|box|ft|foot|feet|'/.test(s)) return { ok: false, overLimit: 'length', lengthFt: +big[1], error: '' };
     if (/^general$|general|freight|pallet|skid|crate|machine|equipment|lumber|material|other|ltl|ftl|flatbed|load/.test(s)) return { ok: true, value: 'general' };
     if (/container/.test(s)) return { ok: false, error: 'Is that a 20 ft or a 40 ft container?' };
-    return { ok: false, error: 'Please choose one: 20 ft container, 40 ft container, or general freight.' };
+    return { ok: false, error: 'Please choose one: 20 ft container, 40 ft container, sheds, or general freight.' };
   },
   length(s) {
     s = String(s || '').trim().toLowerCase().replace(/,/g, '');
