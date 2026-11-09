@@ -86,6 +86,44 @@ function makeRef() {
   return `Q-${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 }
 
+const dash = (v) => (v === undefined || v === null || v === '' ? '—' : String(v));
+
+function quoteAlert(rec) {
+  const c = rec.customer;
+  const sh = rec.shipment;
+  const lines = [
+    `Quote reference: ${rec.id}`,
+    `Status: ${rec.status}`,
+    `Received: ${rec.createdAt}`,
+    '',
+    'Customer',
+    `Name: ${dash(c.name)}`,
+    `Company: ${dash(c.company)}`,
+    `Email: ${dash(c.email)}`,
+    `Phone: ${dash(c.phone)}`,
+    '',
+    'Load',
+    `Pickup: ${dash(sh.pickup)}`,
+    `Drop-off: ${dash(sh.delivery)}`,
+    `Freight: ${dash(sh.freightTypeLabel)}`,
+    `Length: ${sh.lengthFt ? fmtFt(sh.lengthFt) : '—'}`,
+    `Weight: ${sh.weightLbs ? fmtLbs(sh.weightLbs) : '—'}`,
+    `Pickup date: ${dash(sh.pickupDate)}`,
+    `Notes: ${dash(sh.notes)}`,
+    '',
+    'Route and estimate',
+    `Distance: ${rec.distance ? `${rec.distance.loadedKm} km (${rec.distance.source})` : 'unknown'}`,
+    rec.estimate
+      ? `Estimate: $${rec.estimate.low}–$${rec.estimate.high} ${rec.estimate.currency}${rec.estimate.taxNote ? ` (${rec.estimate.taxNote})` : ''}`
+      : 'Estimate: none shown (needs dispatcher review)',
+  ];
+  if (rec.flags && rec.flags.length) {
+    lines.push('', 'Flags');
+    for (const f of rec.flags) lines.push(`- ${f.message}`);
+  }
+  return lines.join('\n');
+}
+
 async function saveQuote(s) {
   const id = makeRef();
   const rec = {
@@ -99,19 +137,11 @@ async function saveQuote(s) {
     distance: s.distance, estimate: s.estimate, flags: s.flags, transcript: s.transcript,
   };
   store.insert('quotes', rec);
-  const sh = rec.shipment;
-  const body = [
-    `New quote request ${id} (${rec.status})`, '',
-    `Customer: ${rec.customer.name}${rec.customer.company ? ' — ' + rec.customer.company : ''}`,
-    `Email: ${rec.customer.email}`, `Phone: ${rec.customer.phone}`, '',
-    `Pickup: ${sh.pickup}`, `Delivery: ${sh.delivery}`,
-    `Freight: ${sh.freightTypeLabel}${sh.lengthFt ? ', ' + fmtFt(sh.lengthFt) : ''}`,
-    `Weight: ${sh.weightLbs ? fmtLbs(sh.weightLbs) : '—'}`, `Pickup date: ${sh.pickupDate}`, `Notes: ${sh.notes || 'None'}`,
-    `Distance: ${s.distance ? s.distance.loadedKm + ' km (' + s.distance.source + ')' : 'unknown'}`,
-    rec.estimate ? `Ballpark estimate shown to customer: $${rec.estimate.low}–$${rec.estimate.high} ${rec.estimate.currency}` : 'No estimate shown (flagged for review).',
-    ...s.flags.map((f) => 'FLAG: ' + f.message),
-  ].join('\n');
-  mailer.notify(`[${B.name}] Quote request ${id}${s.flags.length ? ' — NEEDS REVIEW' : ''}`, body);
+  await mailer.notify(
+    `[${B.name}] Quote request ${id}${s.flags.length ? ' — NEEDS REVIEW' : ''}`,
+    quoteAlert(rec),
+    { replyTo: rec.customer.email, reference: id },
+  );
   return id;
 }
 
@@ -126,15 +156,30 @@ app.post('/api/chat', rateLimit(90, 60 * 1000), async (req, res) => {
   }
 });
 
-app.post('/api/contact', rateLimit(10, 10 * 60 * 1000), (req, res) => {
+app.post('/api/contact', rateLimit(10, 10 * 60 * 1000), async (req, res) => {
   const { name = '', email = '', phone = '', message = '', website = '' } = req.body || {};
   if (website) return res.json({ ok: true }); // honeypot
   if (String(name).trim().length < 2 || !/^\S+@\S+\.\S+$/.test(String(email).trim()) || String(message).trim().length < 5)
     return res.status(400).json({ error: 'Please include your name, a valid email and a short message.' });
   const rec = { id: 'M-' + crypto.randomBytes(3).toString('hex').toUpperCase(), createdAt: new Date().toISOString(), name: String(name).slice(0, 100), email: String(email).slice(0, 150), phone: String(phone).slice(0, 40), message: String(message).slice(0, 3000), status: 'new' };
-  store.insert('messages', rec);
-  mailer.notify(`[${B.name}] Website message from ${rec.name}`, `${rec.name} <${rec.email}> ${rec.phone}\n\n${rec.message}`);
-  res.json({ ok: true });
+  try {
+    store.insert('messages', rec);
+    const body = [
+      `Message reference: ${rec.id}`,
+      `Received: ${rec.createdAt}`,
+      '',
+      `Name: ${rec.name}`,
+      `Email: ${rec.email}`,
+      `Phone: ${rec.phone || '—'}`,
+      '',
+      rec.message,
+    ].join('\n');
+    await mailer.notify(`[${B.name}] Website message ${rec.id}`, body, { replyTo: rec.email, reference: rec.id });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[contact]', e && e.message ? e.message : 'save failed');
+    res.status(500).json({ error: 'Sorry, something went wrong. Please try again.' });
+  }
 });
 
 // ---------- Admin (HTTP Basic auth; username can be anything) ----------
@@ -165,4 +210,5 @@ app.use((req, res) => res.status(404).type('html').send(render(path.join(PUB, '4
 
 if (config.server.adminPassword === 'change-me') console.warn('⚠  ADMIN_PASSWORD is the default "change-me" — set it before going live.');
 if (config.pricing.isExample) console.warn('⚠  Pricing uses EXAMPLE rates — edit config.js before going live.');
+console.log(`[mailer] mode=${mailer.mode()}`);
 app.listen(config.server.port, () => console.log(`${B.name} site running on http://localhost:${config.server.port} (assistant mode: ${llm.enabled() ? 'AI + guided' : 'guided'})`));

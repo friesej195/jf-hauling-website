@@ -110,6 +110,17 @@ module.exports = {
     baseUrl: env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
     model: env('OPENAI_MODEL', 'gpt-4o-mini'),
   },
+  // Dispatch alerts. Resend is used when RESEND_API_KEY is set; otherwise SMTP is
+  // used when SMTP_HOST is set. MAIL_FROM blank means Resend uses the default
+  // below, and SMTP keeps SMTP_FROM or SMTP_USER.
+  mail: {
+    notifyTo: env('NOTIFY_TO', OWNER_EMAIL),
+    from: env('MAIL_FROM', ''),
+    defaultFrom: 'JF Hauling Website <quotes@jfhauling.ca>',
+  },
+  resend: {
+    apiKey: env('RESEND_API_KEY', ''),
+  },
   smtp: {
     host: env('SMTP_HOST', ''),
     port: num('SMTP_PORT', 587),
@@ -117,6 +128,5 @@ module.exports = {
     user: env('SMTP_USER', ''),
     pass: env('SMTP_PASS', ''),
     from: env('SMTP_FROM', ''),
-    notifyTo: env('NOTIFY_TO', OWNER_EMAIL), // emails only send if SMTP_HOST is set
   },
 };
