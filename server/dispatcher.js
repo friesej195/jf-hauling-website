@@ -20,7 +20,9 @@ const LABELS = {
   name: 'Name', email: 'Email', phone: 'Phone', pickup: 'Pickup', delivery: 'Delivery',
   freightType: 'Freight type', lengthFt: 'Length', weightLbs: 'Weight', pickupDate: 'Pickup date', notes: 'Special notes',
 };
-const FT_LABEL = { container20: '20 ft container', container40: '40 ft container', general: 'General freight' };
+const FT_LABEL = { container20: '20 ft container', container40: '40 ft container', shed: 'Sheds & portable buildings', general: 'General freight' };
+const isContainer = (t) => t === 'container20' || t === 'container40';
+const asksLength = (t) => t === 'general' || t === 'shed';
 const MAX_KG = Math.round(L.maxWeightLbs / 2.20462).toLocaleString('en-CA');
 const MAX_M = (L.maxLengthFt / 3.28084).toFixed(1);
 const callLine = () => `call us at **${B.phone}**`;
@@ -50,14 +52,14 @@ function question(s, step = s.step) {
     case 'phone': return { text: 'What phone number should dispatch call? A number with the area code is required.', input: 'tel', placeholder: '519-555-0123' };
     case 'email': return { text: 'And the email for this quote? An email address is required so dispatch can follow up.', input: 'email', placeholder: 'name@company.ca' };
     case 'pickup': {
-      const intro = s.editing ? '' : "Hi! Welcome to " + B.name + " — pickup and gooseneck flat deck hauling across Ontario. We haul containers, general freight and more, up to " + config.limits.maxLengthFt + " ft and " + config.limits.maxWeightLbs.toLocaleString('en-CA') + " lbs" + (B.fullyInsured ? ", and we're fully insured" : '') + ". Tell me the pickup, the drop-off and the load, and I'll give you a **ballpark estimate** right away. Your name and contact details are only needed if you want dispatch to follow up.\n\n";
+      const intro = s.editing ? '' : "Hi! Welcome to " + B.name + " — pickup and gooseneck flat deck hauling across Ontario. We haul containers, sheds, general freight and more, up to " + config.limits.maxLengthFt + " ft and " + config.limits.maxWeightLbs.toLocaleString('en-CA') + " lbs" + (B.fullyInsured ? ", and we're fully insured" : '') + ". Tell me the pickup, the drop-off and the load, and I'll give you a **ballpark estimate** right away. Your name and contact details are only needed if you want dispatch to follow up.\n\n";
       return { text: intro + 'Where are we picking up? A street address is best, but a city or town works (e.g. "Listowel, ON").', input: 'text', placeholder: 'Pickup address or city' };
     }
     case 'delivery': return { text: 'And where is it going?', input: 'text', placeholder: 'Delivery address or city' };
-    case 'freightType': return { text: 'What are we moving?', input: 'text', placeholder: 'e.g. 40 ft container', quick: [{ label: '20 ft container', value: 'container20' }, { label: '40 ft container', value: 'container40' }, { label: 'General freight', value: 'general' }] };
+    case 'freightType': return { text: 'What are we moving?', input: 'text', placeholder: 'e.g. 40 ft container or a shed', quick: [{ label: '20 ft container', value: 'container20' }, { label: '40 ft container', value: 'container40' }, { label: 'Sheds', value: 'shed' }, { label: 'General freight', value: 'general' }] };
     case 'lengthFt': return { text: `How long is the load? Our maximum is **${L.maxLengthFt} ft (${MAX_M} m)**. Feet or metres are fine.`, input: 'text', placeholder: 'e.g. 24 ft or 7 m' };
     case 'weightLbs': return {
-      text: (d.freightType && d.freightType !== 'general'
+      text: (isContainer(d.freightType)
         ? 'What is the total weight, **including the container itself** (gross)? '
         : 'About how much does the load weigh? ') + `Our maximum payload is **${L.maxWeightLbs.toLocaleString('en-CA')} lbs (≈ ${MAX_KG} kg)**. Pounds, kg or tonnes are fine.`,
       input: 'text', placeholder: 'e.g. 15,000 lbs or 6,800 kg',
@@ -74,7 +76,7 @@ function question(s, step = s.step) {
 }
 
 function editChoices(s) {
-  const fields = LOAD_FIELDS.filter((f) => f !== 'lengthFt' || s.data.freightType === 'general');
+  const fields = LOAD_FIELDS.filter((f) => f !== 'lengthFt' || asksLength(s.data.freightType));
   if (s.intent) fields.push(...CONTACT_FIELDS.filter((f) => s.answered[f]));
   return fields.map((f) => ({ label: LABELS[f], value: 'edit:' + f })).concat([{ label: 'Distance (km)', value: 'edit:km' }]);
 }
@@ -130,7 +132,7 @@ function overLimitMessage(s) {
 // ---------- Flow helpers ----------
 function nextMissing(s) {
   for (const f of LOAD_FIELDS) {
-    if (f === 'lengthFt' && s.data.freightType !== 'general') continue;
+    if (f === 'lengthFt' && !asksLength(s.data.freightType)) continue;
     if (!s.answered[f]) return f;
   }
   if (!s.distance) return 'distance';
@@ -245,7 +247,12 @@ async function handle(sessionId, rawText, onSubmit) {
     if (/^limit:continue$|continue|review/i.test(text)) {
       s.flags = s.flags.filter((x) => x.type !== f.type);
       s.flags.push({ type: f.type, value: f.value, message: f.type === 'length' ? `Load length ${fmtFt(f.value)} exceeds our ${L.maxLengthFt} ft limit.` : `Weight ${fmtLbs(f.value)} exceeds our ${L.maxWeightLbs.toLocaleString('en-CA')} lbs payload limit.` });
-      if (f.field === 'freightType') { s.data.freightType = /container|can|box/i.test(f.raw || '') ? 'container40' : 'general'; s.answered.freightType = true; s.data.freightTypeNote = f.raw; }
+      if (f.field === 'freightType') {
+        const raw = f.raw || '';
+        s.data.freightType = /\bsheds?\b|portable building/i.test(raw) ? 'shed' : (/container|can|box/i.test(raw) ? 'container40' : 'general');
+        s.answered.freightType = true;
+        s.data.freightTypeNote = raw;
+      }
       if (f.type === 'length') { s.data.lengthFt = Math.round(f.value * 10) / 10; s.answered.lengthFt = true; }
       else { s.data.weightLbs = Math.round(f.value); s.answered.weightLbs = true; }
       s.pendingLimit = null;

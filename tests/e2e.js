@@ -93,6 +93,16 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   r = await post('/api/chat', { sessionId: r.sessionId, text: '15000' });
   ok(r.step === 'review' && r.estimate, 'corrected weight returns to review with estimate');
 
+  // Sheds sit after containers and use the same price as general freight (no new rate).
+  ({ r } = await convo('Freight options', ['Listowel, ON', 'Stratford, ON']));
+  const labels = (r.quickReplies || []).map((q) => q.label);
+  ok(labels.indexOf('40 ft container') !== -1 && labels.indexOf('40 ft container') < labels.indexOf('Sheds') && labels.indexOf('Sheds') < labels.indexOf('General freight'), 'Sheds option is right after containers');
+  const shed = await convo('Shed quote', ['Listowel, ON', 'Milton, ON', 'shed', '16 ft', '4,000 lbs', 'Flexible', 'none']);
+  const gen = await convo('Matching general-freight quote', ['Listowel, ON', 'Milton, ON', 'general', '16 ft', '4,000 lbs', 'Flexible', 'none']);
+  ok(shed.r.step === 'review' && /Sheds & portable buildings/.test(shed.r.messages.join(' ')), 'shed estimate names sheds and portable buildings');
+  ok(shed.r.estimate && gen.r.estimate && shed.r.estimate.subtotal === gen.r.estimate.subtotal && shed.r.estimate.low === gen.r.estimate.low && shed.r.estimate.high === gen.r.estimate.high, 'shed price matches general freight for the same load');
+  ok(!(shed.r.estimate.lines || []).some((l) => /container surcharge/i.test(l.label)), 'shed estimate has no container surcharge');
+
   // 5. Admin — only the submitted requests, with contact details, are stored
   const no = await fetch(BASE + '/admin/api/quotes');
   ok(no.status === 401, 'admin API requires password');
