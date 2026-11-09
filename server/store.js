@@ -12,6 +12,7 @@ function readAll(name) {
   try { return JSON.parse(fs.readFileSync(file(name), 'utf8')); } catch { return []; }
 }
 function writeAll(name, rows) {
+  fs.mkdirSync(dir, { recursive: true });
   const tmp = file(name) + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(rows, null, 2));
   fs.renameSync(tmp, file(name));

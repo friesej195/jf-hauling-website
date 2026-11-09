@@ -4,7 +4,7 @@ A complete website for **JF Hauling** (Listowel, Ontario) — container moves an
 
 - **Pages:** Home, Services, About, Service Area, Contact, Get a Quote (plus a private Admin page).
 - **Quote assistant:** a chat that asks the customer for everything a dispatcher needs, checks the load against your limits (**40 ft / 20,000 lbs**), works out the driving distance, and shows a **ballpark estimate** that is always labelled "pending dispatcher confirmation". It appears as a floating "Get a Quote" button on every page and full-size on the Quote page.
-- **Requests are saved** on the server and listed on a password-protected **Admin page** (`/admin`), with a CSV download. Optional email alerts.
+- **Requests are saved** on the server (in `DATA_DIR`) and listed on a password-protected **Admin page** (`/admin`), with a CSV download. New quotes and contact messages email dispatch when Resend or SMTP is configured.
 - **No AI subscription needed.** The assistant works as a guided step-by-step chat out of the box. If you add an AI key later, it also understands free-form messages ("I need a 40 ft can moved from Listowel to Guelph next Tuesday, about 15,000 lbs"). Your limits and validation are always enforced by the server either way.
 
 ---
@@ -71,12 +71,18 @@ These are made-up sample rates so the estimator works. **Replace them with your 
 | `OPENAI_API_KEY` | (blank) | Optional — turns on AI understanding |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible service works (e.g. OpenRouter, Groq, Together, a local Ollama at `http://localhost:11434/v1`) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | (blank = email off) | Email alert for every new quote/contact message |
-| `NOTIFY_TO` | owner email | Who receives the alerts |
+| `RESEND_API_KEY` | (blank) | Preferred dispatch alerts. When set, every new quote and contact message is sent through the Resend HTTPS API |
+| `MAIL_FROM` | `JF Hauling Website <quotes@jfhauling.ca>` | From address for Resend. Also used for SMTP when set. The domain must be verified in Resend |
+| `NOTIFY_TO` | owner address in `config.js` | Who receives the alerts. Reply-To is the customer's email |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | (blank) | Fallback only, used when `RESEND_API_KEY` is blank and `SMTP_HOST` is set. `SMTP_PORT` defaults to 587 |
 | `ROUTING_ENABLED` | `true` | `false` = always ask the customer for approximate km |
-| `DATA_DIR` | `./data` | Where requests are saved |
+| `DATA_DIR` | `./data` | Where `quotes.json` and `messages.json` are saved. The directory is created if it is missing |
 
-**Gmail for alerts:** turn on 2-Step Verification, create an *App Password* in your Google account, then use `SMTP_HOST=smtp-mail.outlook.com`, `SMTP_PORT=587`, `SMTP_USER=jfhauling@outlook.com`, `SMTP_PASS=<the app password>`.
+Startup logs `[mailer] mode=resend`, `mode=smtp`, or `mode=off`. Each send logs `[mailer] sent ref=...` or `[mailer] failed ref=...` with the quote or message reference only.
+
+**Resend:** create an API key, verify `jfhauling.ca` (so `quotes@jfhauling.ca` can send), then set `RESEND_API_KEY`. Leave `NOTIFY_TO` blank to use the owner address at the top of `config.js`.
+
+**SMTP fallback:** set `SMTP_HOST` only when `RESEND_API_KEY` is blank. For Outlook, `SMTP_HOST=smtp-mail.outlook.com`, `SMTP_PORT=587`, `SMTP_USER` is the mailbox, and `SMTP_PASS` is an app password. `SMTP_FROM` is optional.
 
 ---
 
@@ -88,7 +94,7 @@ The assistant uses free OpenStreetMap services: **Nominatim** to find the addres
 
 ## 4. Where requests go
 
-- Quote requests: `data/quotes.json` · Contact messages: `data/messages.json` (plain files — no database to manage; back up the `data` folder).
+- Quote requests: `DATA_DIR/quotes.json` · Contact messages: `DATA_DIR/messages.json` (plain files — no database to manage; back up that folder). The default folder is `data/` in the project. On Render it is `/var/data`.
 - **Admin page** `/admin`: list, search, filter by status (new / needs review / contacted / quoted / booked / closed), click a row to see every detail including the full chat, and **Download CSV** for Excel.
 
 ---
@@ -97,7 +103,7 @@ The assistant uses free OpenStreetMap services: **Nominatim** to find the addres
 
 Whichever you choose, set at least `ADMIN_PASSWORD` (and your real rates) and make sure the `data` folder is kept between restarts.
 
-**Render (easiest):** push this folder to a GitHub repo → in Render click *New → Web Service* → pick the repo → Build command `npm install`, Start command `npm start` → add environment variables. Add a *Persistent Disk* (paid plans) mounted at e.g. `/var/data` and set `DATA_DIR=/var/data`, otherwise saved requests are wiped on each deploy. Then add your domain under *Settings → Custom Domains*.
+**Render:** `render.yaml` describes the web service on the Starter plan, a 1 GB persistent disk mounted at `/var/data`, and `DATA_DIR=/var/data`. Quotes and contact messages written there survive deploys and restarts. A disk turns off zero-downtime deploys, so each deploy is briefly unavailable. Set `RESEND_API_KEY` in the Dashboard (a blueprint sync does not fill a new secret on a service that already exists) and verify the sending domain in Resend. Download the admin CSV before the first disk deploy if any quotes are still only on the current instance — attaching the disk does not copy the old ephemeral files. Then add your domain under *Settings → Custom Domains*.
 
 **Railway:** *New Project → Deploy from GitHub repo*. Railway detects Node and runs `npm start`. Add variables under *Variables*, and add a *Volume* mounted at `/data` with `DATA_DIR=/data`.
 
@@ -127,10 +133,11 @@ server/validators.js   ← parsing of names, phones, ft/m, lbs/kg/tonnes, dates
 server/pricing.js      ← ballpark estimate from the pricing table
 server/routing.js      ← OpenStreetMap distance lookup with fallback
 server/llm.js          ← optional OpenAI-compatible AI layer
-server/mailer.js       ← optional email alerts
+server/mailer.js       ← Resend or SMTP dispatch alerts
 server/admin.html      ← admin page
 public/                ← pages, styles, images, chat widget (public/js/chat.js)
 tests/e2e.js           ← automated end-to-end quote tests (npm test)
+tests/mail.js          ← mocked alert and storage tests (npm run test:mail)
 tests/screenshots.py   ← Playwright screenshots
 screenshots/           ← screenshots of the site
 ```
