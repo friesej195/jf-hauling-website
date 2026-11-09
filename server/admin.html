@@ -40,7 +40,7 @@ const fmtDate=s=>new Date(s).toLocaleString('en-CA',{timeZone:'America/Toronto',
 let data={quotes:[],messages:[]},tab='quotes',open=null;
 async function load(){const r=await fetch('/admin/api/quotes');data=await r.json();
   const w=[];if(data.exampleRates)w.push('Pricing is using <b>EXAMPLE rates</b> — set real rates in <code>config.js</code> and set <code>isExample: false</code>.');
-  if(!data.emailEnabled)w.push('Email notifications are off (set SMTP_* variables to turn on).');
+  if(!data.emailEnabled)w.push('Email notifications are off (set RESEND_API_KEY, or SMTP_HOST as a fallback).');
   w.push('Assistant mode: <b>'+(data.aiEnabled?'AI + guided':'guided (no AI key)')+'</b>.');
   document.getElementById('warn').innerHTML='<div class="warnbar">'+w.join(' ')+'</div>';
   document.getElementById('nq').textContent='('+data.quotes.length+')';document.getElementById('nm').textContent='('+data.messages.length+')';render();}

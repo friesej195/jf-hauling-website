@@ -2,14 +2,29 @@ services:
   - type: web
     name: jf-hauling
     runtime: node
-    plan: free
+    # Legacy id for the Starter plan (0.5 CPU / 512 MB). Disks require a paid plan.
+    plan: starter
     buildCommand: npm install --omit=dev
     startCommand: npm start
     healthCheckPath: /
+    disk:
+      name: quote-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "20"
       - key: ADMIN_PASSWORD
         generateValue: true
       - key: SITE_URL
+        sync: false
+      - key: DATA_DIR
+        value: /var/data
+      - key: MAIL_FROM
+        value: "JF Hauling Website <quotes@jfhauling.ca>"
+      - key: NOTIFY_TO
+        value: jfhauling@outlook.com
+      # Existing services ignore new sync:false keys on blueprint sync.
+      # Set this in the Dashboard before expecting alerts.
+      - key: RESEND_API_KEY
         sync: false
