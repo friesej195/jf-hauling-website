@@ -55,7 +55,7 @@ function render(file) {
   cache.set(file, html);
   return html;
 }
-const PAGES = { '/': 'index', '/services': 'services', '/about': 'about', '/service-area': 'service-area', '/contact': 'contact', '/quote': 'quote' };
+const PAGES = { '/': 'index', '/services': 'services', '/about': 'about', '/service-area': 'service-area', '/contact': 'contact', '/quote': 'quote', '/links': 'links' };
 for (const [route, name] of Object.entries(PAGES)) {
   app.get([route, `/${name}.html`], (req, res) => res.type('html').send(render(path.join(PUB, name + '.html'))));
 }

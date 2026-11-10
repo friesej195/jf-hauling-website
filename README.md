@@ -2,7 +2,7 @@
 
 A complete website for **JF Hauling** (Listowel, Ontario) — container moves and general freight hauled with 3500 dually (dual rear wheel) pickup trucks pulling gooseneck trailers — with a built-in online quote assistant ("AI dispatcher").
 
-- **Pages:** Home, Services, About, Service Area, Contact, Get a Quote (plus a private Admin page).
+- **Pages:** Home, Services, About, Service Area, Contact, Get a Quote, and `/links` (a mobile landing page for the business-card QR code; it is not in the main menu). Plus a private Admin page.
 - **Quote assistant:** a chat that asks the customer for everything a dispatcher needs, checks the load against your limits (**40 ft / 20,000 lbs**), works out the driving distance, and shows a **ballpark estimate** that is always labelled "pending dispatcher confirmation". It appears as a floating "Get a Quote" button on every page and full-size on the Quote page.
 - **Requests are saved** on the server (in `DATA_DIR`) and listed on a password-protected **Admin page** (`/admin`), with a CSV download. New quotes and contact messages email dispatch when Resend or SMTP is configured.
 - **No AI subscription needed.** The assistant works as a guided step-by-step chat out of the box. If you add an AI key later, it also understands free-form messages ("I need a 40 ft can moved from Listowel to Guelph next Tuesday, about 15,000 lbs"). Your limits and validation are always enforced by the server either way.

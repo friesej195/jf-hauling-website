@@ -19,6 +19,42 @@ async function convo(title, answers) {
 const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
 
 (async () => {
+  console.log('\n▶ Links landing page');
+  const linksRes = await fetch(BASE + '/links');
+  const linksHtml = await linksRes.text();
+  ok(linksRes.status === 200, '/links returns 200');
+  ok((linksRes.headers.get('content-type') || '').includes('text/html'), '/links is HTML');
+  ok(!linksHtml.includes('{{'), 'links page tokens are rendered');
+  ok(/<title>[^<]*JF Hauling[^<]*<\/title>/.test(linksHtml), 'links page has a title');
+  ok(/<meta name="description" content="[^"]{40,}"/.test(linksHtml), 'links page has a meta description');
+  ok(/Since 2018/.test(linksHtml) && !/10 years/i.test(linksHtml), 'says Since 2018 and does not say 10 years');
+  ok(/color-scheme:\s*only light/.test(linksHtml) && /content="only light"/.test(linksHtml), 'keeps the light-only color scheme');
+  ok(/src="\/img\/brand\/logo-/.test(linksHtml), 'uses the brand logo');
+  const linkBtns = [...linksHtml.matchAll(/<a\b[^>]*class="[^"]*\blink-btn\b[^"]*"[^>]*>/g)].map((m) => {
+    const tag = m[0];
+    return {
+      href: (tag.match(/href="([^"]*)"/) || [])[1],
+      external: /target="_blank"/.test(tag) && /rel="[^"]*\bnoopener\b/.test(tag),
+    };
+  });
+  const expectedLinks = [
+    ['/quote', false],
+    ['https://search.google.com/local/writereview?placeid=ChIJcfVgYgpvKYgR-J2PWA1BUD4', true],
+    ['https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4', true],
+    ['https://www.facebook.com/profile.php?id=61595693620695', true],
+    ['tel:+12265451745', false],
+    ['mailto:jfhauling@outlook.com', false],
+    ['/', false],
+  ];
+  ok(linkBtns.length === expectedLinks.length && linkBtns.every((b, i) => b.href === expectedLinks[i][0] && b.external === expectedLinks[i][1]), 'seven buttons, in order, with external links opened safely');
+  const linkLabels = [...linksHtml.matchAll(/class="link-label">([^<]+)</g)].map((m) => m[1]);
+  ok(linkLabels.join('|') === ['Get a quote in seconds', 'Leave us a Google review', 'Find us on Google', 'Follow us on Facebook', 'Call 226-545-1745', 'Email jfhauling@outlook.com', 'Visit our website'].join('|'), 'button labels match (' + linkLabels.join(', ') + ')');
+  const linksFile = await fetch(BASE + '/links.html');
+  ok(linksFile.status === 200 && (await linksFile.text()).includes('Get a quote in seconds'), '/links.html renders the same page');
+  const homeHtml = await (await fetch(BASE + '/')).text();
+  const nav = homeHtml.match(/<nav class="nav"[\s\S]*?<\/nav>/);
+  ok(nav && !/href="\/links"/.test(nav[0]) && !/href="\/links"/.test(homeHtml), '/links is not in the main navigation or the home page');
+
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:' + ADMIN).toString('base64') };
   const adminQuotes = async () => (await (await fetch(BASE + '/admin/api/quotes', { headers: auth })).json()).quotes;
   const pricing = require('../server/pricing');
