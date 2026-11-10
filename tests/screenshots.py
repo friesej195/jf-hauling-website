@@ -23,7 +23,7 @@ with sync_playwright() as p:
     pg.goto(BASE + '/', wait_until='networkidle'); pg.wait_for_timeout(600)
     pg.screenshot(path=f'{OUT}/home-desktop.png')
     pg.screenshot(path=f'{OUT}/home-desktop-full.png', full_page=True)
-    for name in ['services', 'service-area', 'about', 'contact']:
+    for name in ['services', 'service-area', 'about', 'contact', 'links']:
         pg.goto(f'{BASE}/{name}', wait_until='networkidle'); pg.wait_for_timeout(400)
         pg.screenshot(path=f'{OUT}/{name}-desktop.png', full_page=True)
     # Floating widget open on home
@@ -37,6 +37,8 @@ with sync_playwright() as p:
     m.goto(BASE + '/', wait_until='networkidle'); m.wait_for_timeout(600)
     m.screenshot(path=f'{OUT}/home-mobile.png')
     m.screenshot(path=f'{OUT}/home-mobile-full.png', full_page=True)
+    m.goto(BASE + '/links', wait_until='networkidle'); m.wait_for_timeout(400)
+    m.screenshot(path=f'{OUT}/links-mobile.png', full_page=True)
     m.click('.nav-toggle'); m.wait_for_timeout(400); m.screenshot(path=f'{OUT}/mobile-menu.png')
     m.close()
     # Quote page mid-conversation (happy path to estimate)

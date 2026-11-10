@@ -148,3 +148,41 @@ form.form{display:grid;gap:1rem}
 
 @media (max-width:560px){.site-header .container{height:72px}.brand-mark{height:54px}.brand-name{font-size:1.4rem}.nav{inset:calc(72px + env(safe-area-inset-top,0px)) 0 auto 0}}
 .hero .eyebrow,.page-hero .eyebrow,section.dark .eyebrow,.site-footer .eyebrow{color:#f6b913;color:var(--accent)}
+/* QR links landing. Explicit hex colors keep the charcoal/yellow palette when an in-app browser tries to darken the page. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+body.links-body{margin:0;min-height:100vh;min-height:100dvh;background-color:#2a2d32;background-color:var(--charcoal);color:#fff;background-image:radial-gradient(880px 380px at 50% -10%,#45484f 0%,transparent 64%),linear-gradient(180deg,#1c1e22 0%,#2a2d32 46%,#232529 100%)}
+.links-page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:calc(22px + env(safe-area-inset-top,0px)) 16px env(safe-area-inset-bottom,0px)}
+.links-page::after{content:"";display:block;height:8px;margin-top:auto;background:repeating-linear-gradient(90deg,#f6b913 0 22px,transparent 22px 44px)}
+.links-stack{width:100%;max-width:480px;margin:0 auto;padding-bottom:22px;display:flex;flex-direction:column;align-items:stretch}
+.links-logo{width:132px;height:auto;align-self:center;filter:drop-shadow(0 16px 28px rgba(0,0,0,.42))}
+.links-page h1{color:#fff;font-size:clamp(2.05rem,8vw,2.6rem);margin:.65rem 0 .3rem;text-align:center;width:100%}
+.links-lead{color:#d0d2d5;text-align:center;font-size:1.02rem;line-height:1.45;margin:0 0 1.15rem;width:100%}
+.links-since{white-space:nowrap}
+.links-list{list-style:none;padding:0;margin:0;width:100%;display:flex;flex-direction:column;gap:.6rem}
+.links-list li{margin:0}
+.link-btn{display:flex;align-items:center;gap:.8rem;width:100%;min-height:58px;padding:.75rem .9rem .75rem .7rem;border-radius:14px;background-color:#fff;color:#2a2d32;color:var(--charcoal);text-decoration:none;font-weight:700;font-size:1.05rem;line-height:1.25;border:2px solid transparent;box-shadow:0 8px 18px rgba(0,0,0,.18);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .15s,background-color .15s,border-color .15s}
+.link-btn:hover{transform:translateY(-1px);border-color:#f6b913;border-color:var(--accent)}
+.link-btn:active{transform:translateY(0) scale(.985)}
+.link-btn:focus-visible{outline:3px solid #f6b913;outline:3px solid var(--accent);outline-offset:3px}
+.link-btn-primary{background-color:#f6b913;background-color:var(--accent);color:#2a2d32;color:var(--accent-ink);box-shadow:0 10px 22px rgba(246,185,19,.28)}
+.link-btn-primary:hover{background-color:#e0a500;background-color:var(--accent-d);border-color:transparent}
+.link-btn-primary:focus-visible{outline-color:#fff}
+.link-btn-quiet{background-color:transparent;color:#fff;border-color:rgba(255,255,255,.5);box-shadow:none}
+.link-btn-quiet:hover{background-color:rgba(255,255,255,.08);border-color:#f6b913;border-color:var(--accent)}
+.link-ico{flex:0 0 auto;width:40px;height:40px;border-radius:11px;background-color:#2a2d32;background-color:var(--charcoal);color:#f6b913;color:var(--accent);display:flex;align-items:center;justify-content:center}
+.link-ico svg{width:22px;height:22px}
+.link-btn-quiet .link-ico{background-color:rgba(255,255,255,.08)}
+.link-label{flex:1;text-align:left;overflow-wrap:break-word}
+@media (min-width:720px){
+  .links-page{padding-top:36px}
+  .links-logo{width:156px}
+}
+@media (max-width:380px){
+  .links-logo{width:124px}
+  .link-btn{font-size:.98rem;min-height:54px;gap:.65rem}
+  .link-ico{width:36px;height:36px}
+}
+@media (prefers-reduced-motion:reduce){
+  .link-btn{transition:none}
+  .link-btn:hover,.link-btn:active{transform:none}
+}
