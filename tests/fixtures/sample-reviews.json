@@ -1,0 +1,34 @@
+{
+  "rating": 4.7,
+  "reviewCount": 3,
+  "reviews": [
+    {
+      "author": "Sample Customer A",
+      "authorUrl": "https://example.com/sample-reviewer-a",
+      "rating": 5,
+      "text": "SAMPLE REVIEW — not a real customer. They picked up the container in Listowel and had it in Guelph the same afternoon.",
+      "relativeDate": "2 weeks ago",
+      "publishTime": "2026-10-28T15:00:00Z",
+      "googleMapsUri": "https://example.com/sample-review-a"
+    },
+    {
+      "author": "Sample Customer B",
+      "authorUrl": "https://example.com/sample-reviewer-b",
+      "rating": 4,
+      "text": "SAMPLE REVIEW — not a real customer. The shed arrived upright and the driver called before turning into the lane.",
+      "relativeDate": "a month ago",
+      "publishTime": "2026-10-10T15:00:00Z",
+      "googleMapsUri": "https://example.com/sample-review-b",
+      "originalText": "EXEMPLE — pas un vrai client. La remise est arrivée droite.",
+      "translated": true
+    },
+    {
+      "author": "Sample Customer C",
+      "rating": 5,
+      "text": "SAMPLE REVIEW — not a real customer. Clear price, no surprises, and they knew the back roads around Perth County.",
+      "relativeDate": "3 months ago",
+      "publishTime": "2026-08-12T15:00:00Z",
+      "googleMapsUri": "https://example.com/sample-review-c"
+    }
+  ]
+}
