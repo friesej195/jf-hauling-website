@@ -70,10 +70,12 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   if (/data-reviews-source="empty"/.test(reviewsHtml)) ok(!/reviews-teaser/.test(homeHtml), 'home teaser is hidden when there are no reviews');
   else ok(/reviews-teaser/.test(homeHtml), 'home teaser is shown when reviews exist');
   const areaHtml = await (await fetch(BASE + '/service-area')).text();
-  ok(/From Listowel to anywhere in Ontario/.test(areaHtml), 'service area still says they haul anywhere in Ontario from Listowel');
-  ok(/We're in these areas every week/.test(areaHtml), 'service area has a weekly-runs heading');
-  const weekly = ['Parry Sound', 'Huntsville', 'Barrie', 'Belleville', 'Peterborough', 'Toronto', 'Hamilton', 'London'];
-  ok(weekly.every((city) => areaHtml.includes(city)), 'weekly runs list Parry Sound, Huntsville, Barrie, Belleville, Peterborough, Toronto, Hamilton and London');
+  ok(/based in Listowel and services all of Ontario/.test(areaHtml), 'service area says a Listowel company services all of Ontario');
+  ok(/Cities we service/.test(areaHtml), 'service area has one Cities we service heading');
+  ok(!/We're in these areas every week|Home base|home turf|Examples only/.test(areaHtml), 'service area has no weekly heading or Listowel-area grouping');
+  ok((areaHtml.match(/<ul class="tags"/g) || []).length === 1, 'cities are one list');
+  const cities = ['Barrie', 'Belleville', 'Guelph', 'Hamilton', 'Huntsville', 'Kitchener-Waterloo', 'Listowel', 'London', 'Ottawa', 'Parry Sound', 'Peterborough', 'Stratford', 'Toronto', 'Windsor'];
+  ok(cities.every((city) => areaHtml.includes('>' + city + '<')), 'one list includes the previous towns and the added cities');
 
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:' + ADMIN).toString('base64') };
   const adminQuotes = async () => (await (await fetch(BASE + '/admin/api/quotes', { headers: auth })).json()).quotes;

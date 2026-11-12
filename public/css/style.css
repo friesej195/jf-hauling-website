@@ -119,10 +119,6 @@ section.dark .why p{color:#c2c4c8}
 .map-card figcaption{padding:.8rem 1rem;font-size:.9rem;color:var(--muted)}
 .tags{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0;margin:1rem 0}
 .tags li{background:#fff;border:1px solid var(--line);padding:.35em .8em;border-radius:999px;font-weight:600;font-size:.92rem}
-.weekly-runs{margin:1.15rem 0 1.35rem}
-.weekly-runs h3{margin-bottom:.7rem}
-.tags-weekly{margin:0}
-.tags-weekly li{background:#fff4d1;border-color:#f6b913;color:#2a2d32}
 /* contact */
 .contact-list{list-style:none;padding:0;margin:0}
 .contact-list li{padding:1rem 0;border-bottom:1px solid var(--line)}
