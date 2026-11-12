@@ -74,8 +74,10 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   ok(/Cities we service/.test(areaHtml), 'service area has one Cities we service heading');
   ok(!/We're in these areas every week|Home base|home turf|Examples only/.test(areaHtml), 'service area has no weekly heading or Listowel-area grouping');
   ok((areaHtml.match(/<ul class="tags"/g) || []).length === 1, 'cities are one list');
-  const cities = ['Barrie', 'Belleville', 'Guelph', 'Hamilton', 'Huntsville', 'Kitchener-Waterloo', 'Listowel', 'London', 'Ottawa', 'Parry Sound', 'Peterborough', 'Stratford', 'Toronto', 'Windsor'];
-  ok(cities.every((city) => areaHtml.includes('>' + city + '<')), 'one list includes the previous towns and the added cities');
+  const cities = ['Barrie', 'Belleville', 'Collingwood', 'Elmira', 'Guelph', 'Hamilton', 'Huntsville', 'Kitchener-Waterloo', 'Leamington', 'Listowel', 'London', 'Niagara Falls', 'Ottawa', 'Owen Sound', 'Parry Sound', 'Peterborough', 'Stratford', 'Sudbury', 'Tillsonburg', 'Toronto', 'Windsor'];
+  const listed = [...areaHtml.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]).filter((name) => cities.includes(name));
+  ok(listed.join('|') === cities.join('|'), 'cities we service are one alphabetical list');
+  ok((areaHtml.match(/<li>Ottawa<\/li>/g) || []).length === 1, 'Ottawa is listed once');
 
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:' + ADMIN).toString('base64') };
   const adminQuotes = async () => (await (await fetch(BASE + '/admin/api/quotes', { headers: auth })).json()).quotes;
