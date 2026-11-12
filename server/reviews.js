@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 
-const DEFAULT_REVIEW_URL = 'https://g.page/r/CepCdhSKdQuJEBI/review';
+const DEFAULT_REVIEW_URL = 'https://g.page/r/CepCdhSKdQuJEAE/review';
 const DEFAULT_MAPS_URL = 'https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4';
 const FIELD_MASK = 'id,displayName,rating,userRatingCount,reviews,googleMapsUri,googleMapsLinks';
 const POLICY_URL = 'https://support.google.com/contributionpolicy/answer/7422880';

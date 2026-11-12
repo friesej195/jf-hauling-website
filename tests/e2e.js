@@ -39,7 +39,7 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   });
   const expectedLinks = [
     ['/quote', false],
-    ['https://g.page/r/CepCdhSKdQuJEBI/review', true],
+    ['https://g.page/r/CepCdhSKdQuJEAE/review', true],
     ['https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4', true],
     ['https://www.facebook.com/profile.php?id=61595693620695', true],
     ['tel:+12265451745', false],
@@ -61,7 +61,7 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   ok((reviewsRes.headers.get('content-type') || '').includes('text/html'), '/reviews is HTML');
   ok(!reviewsHtml.includes('{{'), 'reviews page tokens are rendered');
   ok(/<h1>Reviews<\/h1>/.test(reviewsHtml), 'reviews page heading is Reviews');
-  ok(reviewsHtml.includes('https://g.page/r/CepCdhSKdQuJEBI/review') && /Leave us a Google review/.test(reviewsHtml), 'reviews page uses the g.page review link');
+  ok(reviewsHtml.includes('https://g.page/r/CepCdhSKdQuJEAE/review') && /Leave us a Google review/.test(reviewsHtml), 'reviews page uses the g.page review link');
   ok(/See all reviews on Google/.test(reviewsHtml), 'reviews page links to all Google reviews');
   ok(!/be the first|first review|one of our first/i.test(reviewsHtml), 'reviews page has no first-review empty state');
   ok(!/GOOGLE_PLACES_API_KEY|X-Goog-Api-Key/.test(reviewsHtml), 'reviews page does not expose the API key');

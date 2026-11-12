@@ -140,7 +140,7 @@ module.exports = {
   // ---------------------------------------------------------
   google: {
     placeId: env('GOOGLE_PLACE_ID', 'ChIJcfVgYgpvKYgR-J2PWA1BUD4'), // 3117 Arthur St S, Fordwich, ON
-    reviewUrl: env('GOOGLE_REVIEW_URL', 'https://g.page/r/CepCdhSKdQuJEBI/review'),
+    reviewUrl: env('GOOGLE_REVIEW_URL', 'https://g.page/r/CepCdhSKdQuJEAE/review'),
     mapsUrl: env('GOOGLE_MAPS_URL', 'https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4'),
     apiKey: env('GOOGLE_PLACES_API_KEY', ''),
     language: env('GOOGLE_REVIEWS_LANGUAGE', 'en'),

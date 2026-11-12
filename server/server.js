@@ -43,7 +43,7 @@ function tokens() {
     WHY_GRID: B.fullyInsured ? 'g2' : 'g3',
     INSURED_WHY: B.fullyInsured ? '<div class="why"><div class="num"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div><div><h3>Fully insured</h3><p>Fully insured for your peace of mind, so you can hand over your load with confidence.</p></div></div>' : '',
     INSURED_ABOUT: B.fullyInsured ? '<div class="card"><h3>Fully insured</h3><p>Fully insured for your peace of mind.</p></div>' : '',
-    GOOGLE_REVIEW_URL: esc(reviews.httpsUrl(config.google.reviewUrl, 'https://g.page/r/CepCdhSKdQuJEBI/review')),
+    GOOGLE_REVIEW_URL: esc(reviews.httpsUrl(config.google.reviewUrl, 'https://g.page/r/CepCdhSKdQuJEAE/review')),
     GOOGLE_MAPS_URL: esc(reviews.httpsUrl(config.google.mapsUrl, 'https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4')),
   };
 }

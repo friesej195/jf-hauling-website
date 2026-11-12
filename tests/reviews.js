@@ -15,7 +15,7 @@ const shell = '<h1>Reviews</h1>{{REVIEWS_LEAD}}<main>{{REVIEWS_MAIN}}</main>{{RE
 const google = {
   apiKey: '',
   placeId: 'ChIJcfVgYgpvKYgR-J2PWA1BUD4',
-  reviewUrl: 'https://g.page/r/CepCdhSKdQuJEBI/review',
+  reviewUrl: 'https://g.page/r/CepCdhSKdQuJEAE/review',
   mapsUrl: 'https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4',
   language: 'en',
   cacheMs: 60 * 60 * 1000,
