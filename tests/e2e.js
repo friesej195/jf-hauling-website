@@ -69,6 +69,11 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   ok(footer && /href="\/reviews"/.test(footer[0]), 'Reviews is in the footer');
   if (/data-reviews-source="empty"/.test(reviewsHtml)) ok(!/reviews-teaser/.test(homeHtml), 'home teaser is hidden when there are no reviews');
   else ok(/reviews-teaser/.test(homeHtml), 'home teaser is shown when reviews exist');
+  const areaHtml = await (await fetch(BASE + '/service-area')).text();
+  ok(/From Listowel to anywhere in Ontario/.test(areaHtml), 'service area still says they haul anywhere in Ontario from Listowel');
+  ok(/We're in these areas every week/.test(areaHtml), 'service area has a weekly-runs heading');
+  const weekly = ['Parry Sound', 'Huntsville', 'Barrie', 'Belleville', 'Peterborough', 'Toronto', 'Hamilton', 'London'];
+  ok(weekly.every((city) => areaHtml.includes(city)), 'weekly runs list Parry Sound, Huntsville, Barrie, Belleville, Peterborough, Toronto, Hamilton and London');
 
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:' + ADMIN).toString('base64') };
   const adminQuotes = async () => (await (await fetch(BASE + '/admin/api/quotes', { headers: auth })).json()).quotes;
