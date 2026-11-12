@@ -39,7 +39,7 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   });
   const expectedLinks = [
     ['/quote', false],
-    ['https://search.google.com/local/writereview?placeid=ChIJcfVgYgpvKYgR-J2PWA1BUD4', true],
+    ['https://g.page/r/CepCdhSKdQuJEBI/review', true],
     ['https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4', true],
     ['https://www.facebook.com/profile.php?id=61595693620695', true],
     ['tel:+12265451745', false],
@@ -54,6 +54,30 @@ const future = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   const homeHtml = await (await fetch(BASE + '/')).text();
   const nav = homeHtml.match(/<nav class="nav"[\s\S]*?<\/nav>/);
   ok(nav && !/href="\/links"/.test(nav[0]) && !/href="\/links"/.test(homeHtml), '/links is not in the main navigation or the home page');
+  ok(nav && /href="\/reviews"/.test(nav[0]), 'Reviews is in the main navigation');
+  const reviewsRes = await fetch(BASE + '/reviews');
+  const reviewsHtml = await reviewsRes.text();
+  ok(reviewsRes.status === 200, '/reviews returns 200');
+  ok((reviewsRes.headers.get('content-type') || '').includes('text/html'), '/reviews is HTML');
+  ok(!reviewsHtml.includes('{{'), 'reviews page tokens are rendered');
+  ok(/<h1>Reviews<\/h1>/.test(reviewsHtml), 'reviews page heading is Reviews');
+  ok(reviewsHtml.includes('https://g.page/r/CepCdhSKdQuJEBI/review') && /Leave us a Google review/.test(reviewsHtml), 'reviews page uses the g.page review link');
+  ok(/See all reviews on Google/.test(reviewsHtml), 'reviews page links to all Google reviews');
+  ok(!/be the first|first review|one of our first/i.test(reviewsHtml), 'reviews page has no first-review empty state');
+  ok(!/GOOGLE_PLACES_API_KEY|X-Goog-Api-Key/.test(reviewsHtml), 'reviews page does not expose the API key');
+  const footer = reviewsHtml.match(/<footer[\s\S]*?<\/footer>/);
+  ok(footer && /href="\/reviews"/.test(footer[0]), 'Reviews is in the footer');
+  if (/data-reviews-source="empty"/.test(reviewsHtml)) ok(!/reviews-teaser/.test(homeHtml), 'home teaser is hidden when there are no reviews');
+  else ok(/reviews-teaser/.test(homeHtml), 'home teaser is shown when reviews exist');
+  const areaHtml = await (await fetch(BASE + '/service-area')).text();
+  ok(/based in Listowel and services all of Ontario/.test(areaHtml), 'service area says a Listowel company services all of Ontario');
+  ok(/Cities we service/.test(areaHtml), 'service area has one Cities we service heading');
+  ok(!/We're in these areas every week|Home base|home turf|Examples only/.test(areaHtml), 'service area has no weekly heading or Listowel-area grouping');
+  ok((areaHtml.match(/<ul class="tags"/g) || []).length === 1, 'cities are one list');
+  const cities = ['Barrie', 'Belleville', 'Collingwood', 'Elmira', 'Guelph', 'Hamilton', 'Huntsville', 'Kitchener-Waterloo', 'Leamington', 'Listowel', 'London', 'Niagara Falls', 'Ottawa', 'Owen Sound', 'Parry Sound', 'Peterborough', 'Stratford', 'Sudbury', 'Tillsonburg', 'Toronto', 'Windsor'];
+  const listed = [...areaHtml.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]).filter((name) => cities.includes(name));
+  ok(listed.join('|') === cities.join('|'), 'cities we service are one alphabetical list');
+  ok((areaHtml.match(/<li>Ottawa<\/li>/g) || []).length === 1, 'Ottawa is listed once');
 
   const auth = { Authorization: 'Basic ' + Buffer.from('admin:' + ADMIN).toString('base64') };
   const adminQuotes = async () => (await (await fetch(BASE + '/admin/api/quotes', { headers: auth })).json()).quotes;

@@ -2,7 +2,7 @@
 
 A complete website for **JF Hauling** (Listowel, Ontario) — container moves and general freight hauled with 3500 dually (dual rear wheel) pickup trucks pulling gooseneck trailers — with a built-in online quote assistant ("AI dispatcher").
 
-- **Pages:** Home, Services, About, Service Area, Contact, Get a Quote, and `/links` (a mobile landing page for the business-card QR code; it is not in the main menu). Plus a private Admin page.
+- **Pages:** Home, Services, About, Reviews, Service Area, Contact, Get a Quote, and `/links` (a mobile landing page for the business-card QR code; it is not in the main menu). Plus a private Admin page.
 - **Quote assistant:** a chat that asks the customer for everything a dispatcher needs, checks the load against your limits (**40 ft / 20,000 lbs**), works out the driving distance, and shows a **ballpark estimate** that is always labelled "pending dispatcher confirmation". It appears as a floating "Get a Quote" button on every page and full-size on the Quote page.
 - **Requests are saved** on the server (in `DATA_DIR`) and listed on a password-protected **Admin page** (`/admin`), with a CSV download. New quotes and contact messages email dispatch when Resend or SMTP is configured.
 - **No AI subscription needed.** The assistant works as a guided step-by-step chat out of the box. If you add an AI key later, it also understands free-form messages ("I need a 40 ft can moved from Listowel to Guelph next Tuesday, about 15,000 lbs"). Your limits and validation are always enforced by the server either way.
@@ -23,6 +23,7 @@ Open <http://localhost:3000>. Admin page: <http://localhost:3000/admin> (any use
 
 To test the whole quote flow automatically while the site is running: `npm test`
 (set `ADMIN_PASSWORD` the same as the running server, e.g. `ADMIN_PASSWORD=change-me npm test`).
+`npm run test:reviews` checks the reviews page without a Google key.
 
 ---
 
@@ -78,6 +79,8 @@ These are made-up sample rates so the estimator works. **Replace them with your 
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_SECURE` | (blank) | Fallback only, used when `RESEND_API_KEY` is blank and `SMTP_HOST` is set. `SMTP_PORT` defaults to 587 |
 | `ROUTING_ENABLED` | `true` | `false` = always ask the customer for approximate km |
 | `DATA_DIR` | `./data` | Where `quotes.json` and `messages.json` are saved. The directory is created if it is missing |
+| `GOOGLE_PLACES_API_KEY` | (blank) | Optional. Live Google reviews. See **Google reviews** below. The key stays on the server |
+| `GOOGLE_REVIEWS_CACHE_HOURS` | `6` | How long to keep those reviews in memory (1–12 hours). They are not saved to disk |
 
 Startup logs `[mailer] mode=resend`, `mode=smtp`, or `mode=off`. Each send logs `[mailer] sent ref=...` or `[mailer] failed ref=...` with the quote or message reference only.
 
@@ -104,7 +107,7 @@ The assistant uses free OpenStreetMap services: **Nominatim** to find the addres
 
 Whichever you choose, set at least `ADMIN_PASSWORD` (and your real rates) and make sure the `data` folder is kept between restarts.
 
-**Render:** `render.yaml` describes the web service on the Starter plan, a 1 GB persistent disk mounted at `/var/data`, and `DATA_DIR=/var/data`. Quotes and contact messages written there survive deploys and restarts. A disk turns off zero-downtime deploys, so each deploy is briefly unavailable. Set `RESEND_API_KEY` in the Dashboard (a blueprint sync does not fill a new secret on a service that already exists) and verify the sending domain in Resend. Download the admin CSV before the first disk deploy if any quotes are still only on the current instance — attaching the disk does not copy the old ephemeral files. Then add your domain under *Settings → Custom Domains*.
+**Render:** `render.yaml` describes the web service on the Starter plan, a 1 GB persistent disk mounted at `/var/data`, and `DATA_DIR=/var/data`. Quotes and contact messages written there survive deploys and restarts. A disk turns off zero-downtime deploys, so each deploy is briefly unavailable. Set `RESEND_API_KEY` and, when you want live reviews, `GOOGLE_PLACES_API_KEY` in the Dashboard (a blueprint sync does not fill a new secret on a service that already exists) and verify the sending domain in Resend. Download the admin CSV before the first disk deploy if any quotes are still only on the current instance — attaching the disk does not copy the old ephemeral files. Then add your domain under *Settings → Custom Domains*.
 
 **Railway:** *New Project → Deploy from GitHub repo*. Railway detects Node and runs `npm start`. Add variables under *Variables*, and add a *Volume* mounted at `/data` with `DATA_DIR=/data`.
 
@@ -123,6 +126,46 @@ Always use HTTPS in production (Render/Railway do this for you) — the admin pa
 
 ---
 
+## Google reviews
+
+`/reviews` shows your Google rating, the number of reviews, and the review text Google sends (up to five, in Google's relevance order). The page has a **Leave us a Google review** button and a **See all reviews on Google** link. Reviews is in the menu and the footer. The same review button is on `/links`.
+
+The home page adds a short "What customers say" block only when there is at least one review. With none, that block is left out.
+
+When Google has no reviews, `/reviews` shows the Reviews heading, the button, and the link.
+
+### Turn on live reviews (Render)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project, turn on billing, and enable **Places API (New)**.
+2. Create an API key and restrict it to **Places API (New)** only. Do not use an HTTP referrer restriction — the website server calls Google, not the visitor's browser. Leave an IP restriction off unless the service has a fixed outbound address, or the lookup will fail.
+3. On Render, open the **jf-hauling** service → **Environment** → add `GOOGLE_PLACES_API_KEY`. A blueprint sync does not fill a new secret on a service that already exists, so type it in the Dashboard and save. Render redeploys. The key is never sent to the browser.
+4. The listing is place ID `ChIJcfVgYgpvKYgR-J2PWA1BUD4` (3117 Arthur St S, Fordwich, ON). Change `GOOGLE_PLACE_ID` only if that listing changes.
+
+Google charges for each lookup. The site keeps the result in memory for 6 hours (`GOOGLE_REVIEWS_CACHE_HOURS`, from 1 to 12) so a page view does not call Google every time. Review text is not written to disk. After a restart, the next visit loads it again. Google's rules ask for the reviewer name, photo, and profile link, a link back to that review, a note that the list is ordered by relevance, and a Google Maps credit. The page does that when the reviews come from the API.
+
+The review button is `https://g.page/r/CepCdhSKdQuJEBI/review`.
+
+### Add reviews by hand
+
+Use this when the API key is not set, or when Google cannot be reached and the server has nothing in memory.
+
+Edit `manualReviews` in `config.js`. Leave the array empty when you have nothing to add. One object per review:
+
+```js
+manualReviews: [
+  {
+    author: '[Customer name]',
+    rating: 5,
+    text: '[Paste the review here]',
+    relativeDate: '[e.g. March 2026]',
+  },
+],
+```
+
+`author`, `rating` (1 to 5), and `text` are required. `relativeDate` is optional. `authorUrl` and `googleMapsUri` are optional links.
+
+The rating and count are worked out from that list. Hand-entered reviews are not labelled as live Google Maps content. When the API key is set and Google answers, those live reviews replace the list — including when Google still has none.
+
 ## 6. Project layout
 
 ```
@@ -133,11 +176,13 @@ server/dispatcher.js   ← the quote conversation (guided + AI), limit checks
 server/validators.js   ← parsing of names, phones, ft/m, lbs/kg/tonnes, dates
 server/pricing.js      ← ballpark estimate from the pricing table
 server/routing.js      ← OpenStreetMap distance lookup with fallback
+server/reviews.js      ← Google reviews (Places API, or the manual list in config.js)
 server/llm.js          ← optional OpenAI-compatible AI layer
 server/mailer.js       ← Resend or SMTP dispatch alerts
 server/admin.html      ← admin page
 public/                ← pages, styles, images, chat widget (public/js/chat.js)
 tests/e2e.js           ← automated end-to-end quote tests (npm test)
+tests/reviews.js       ← reviews page tests, no Google key needed (npm run test:reviews)
 tests/mail.js          ← mocked alert and storage tests (npm run test:mail)
 tests/screenshots.py   ← Playwright screenshots
 screenshots/           ← screenshots of the site
@@ -148,7 +193,7 @@ Page text lives in `public/*.html`; `{{NAME}}`, `{{PHONE}}` etc. are filled in a
 ## 7. Good to know
 - Estimates are only as good as the rates you enter; every estimate tells the customer it's a ballpark pending dispatcher confirmation.
 - For containers, the assistant asks for **total weight including the container** and checks that against 20,000 lbs. If your 20,000 lbs limit means cargo only (not counting the container), change the wording in `server/dispatcher.js` (the `weightLbs` question) and on the Services page.
-- No testimonials, fleet sizes or certifications are on the site; add real ones to the HTML pages if you'd like.
+- Fleet sizes and certifications are not on the site. Customer reviews are on `/reviews` (see **Google reviews** above).
 
 ## Branding
 

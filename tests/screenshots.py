@@ -23,7 +23,7 @@ with sync_playwright() as p:
     pg.goto(BASE + '/', wait_until='networkidle'); pg.wait_for_timeout(600)
     pg.screenshot(path=f'{OUT}/home-desktop.png')
     pg.screenshot(path=f'{OUT}/home-desktop-full.png', full_page=True)
-    for name in ['services', 'service-area', 'about', 'contact', 'links']:
+    for name in ['services', 'service-area', 'about', 'reviews', 'contact', 'links']:
         pg.goto(f'{BASE}/{name}', wait_until='networkidle'); pg.wait_for_timeout(400)
         pg.screenshot(path=f'{OUT}/{name}-desktop.png', full_page=True)
     # Floating widget open on home

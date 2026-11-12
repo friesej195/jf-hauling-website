@@ -28,3 +28,9 @@ services:
       # Set this in the Dashboard before expecting alerts.
       - key: RESEND_API_KEY
         sync: false
+      # Places API (New). Set this in the Dashboard. A blueprint sync does not
+      # fill a new secret on a service that already exists. The key stays on the server.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: GOOGLE_REVIEWS_CACHE_HOURS
+        value: "6"

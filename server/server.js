@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
 const config = require('../config');
+const reviews = require('./reviews');
 const store = require('./store');
 const dispatcher = require('./dispatcher');
 const mailer = require('./mailer');
@@ -42,6 +43,8 @@ function tokens() {
     WHY_GRID: B.fullyInsured ? 'g2' : 'g3',
     INSURED_WHY: B.fullyInsured ? '<div class="why"><div class="num"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div><div><h3>Fully insured</h3><p>Fully insured for your peace of mind, so you can hand over your load with confidence.</p></div></div>' : '',
     INSURED_ABOUT: B.fullyInsured ? '<div class="card"><h3>Fully insured</h3><p>Fully insured for your peace of mind.</p></div>' : '',
+    GOOGLE_REVIEW_URL: esc(reviews.httpsUrl(config.google.reviewUrl, 'https://g.page/r/CepCdhSKdQuJEBI/review')),
+    GOOGLE_MAPS_URL: esc(reviews.httpsUrl(config.google.mapsUrl, 'https://www.google.com/maps/place/?q=place_id:ChIJcfVgYgpvKYgR-J2PWA1BUD4')),
   };
 }
 const cache = new Map();
@@ -55,7 +58,24 @@ function render(file) {
   cache.set(file, html);
   return html;
 }
-const PAGES = { '/': 'index', '/services': 'services', '/about': 'about', '/service-area': 'service-area', '/contact': 'contact', '/quote': 'quote', '/links': 'links' };
+function sendPage(name) {
+  return (req, res) => {
+    Promise.resolve().then(async () => {
+      let html = render(path.join(PUB, name + '.html'));
+      if (html.includes('{{REVIEWS_')) {
+        const data = await reviews.load();
+        html = reviews.apply(html, data);
+      }
+      res.type('html').send(html);
+    }).catch((err) => {
+      console.error('[page]', err && err.message ? err.message : err);
+      if (!res.headersSent) res.status(500).type('text').send('Sorry, something went wrong.');
+    });
+  };
+}
+app.get(['/', '/index.html'], sendPage('index'));
+app.get(['/reviews', '/reviews.html'], sendPage('reviews'));
+const PAGES = { '/services': 'services', '/about': 'about', '/service-area': 'service-area', '/contact': 'contact', '/quote': 'quote', '/links': 'links' };
 for (const [route, name] of Object.entries(PAGES)) {
   app.get([route, `/${name}.html`], (req, res) => res.type('html').send(render(path.join(PUB, name + '.html'))));
 }
@@ -240,5 +260,7 @@ app.use((req, res) => res.status(404).type('html').send(render(path.join(PUB, '4
 
 if (config.server.adminPassword === 'change-me') console.warn('⚠  ADMIN_PASSWORD is the default "change-me" — set it before going live.');
 if (config.pricing.isExample) console.warn('⚠  Pricing uses EXAMPLE rates — edit config.js before going live.');
+if (config.google.apiKey) console.log(`[reviews] Places API key is set. Reviews stay in memory for ${Math.round(config.google.cacheMs / 3600000)}h and are not saved to disk.`);
+else console.log('[reviews] No GOOGLE_PLACES_API_KEY — showing manualReviews from config.js.');
 console.log(`[mailer] mode=${mailer.mode()}`);
 app.listen(config.server.port, () => console.log(`${B.name} site running on http://localhost:${config.server.port} (assistant mode: ${llm.enabled() ? 'AI + guided' : 'guided'})`));
