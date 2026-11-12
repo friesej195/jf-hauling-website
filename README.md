@@ -143,7 +143,7 @@ When Google has no reviews, `/reviews` shows the Reviews heading, the button, an
 
 Google charges for each lookup. The site keeps the result in memory for 6 hours (`GOOGLE_REVIEWS_CACHE_HOURS`, from 1 to 12) so a page view does not call Google every time. Review text is not written to disk. After a restart, the next visit loads it again. Google's rules ask for the reviewer name, photo, and profile link, a link back to that review, a note that the list is ordered by relevance, and a Google Maps credit. The page does that when the reviews come from the API.
 
-The review button is `https://g.page/r/CepCdhSKdQuJEBI/review`.
+The review button is `https://g.page/r/CepCdhSKdQuJEAE/review`.
 
 ### Add reviews by hand
 
