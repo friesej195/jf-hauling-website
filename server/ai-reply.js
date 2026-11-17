@@ -149,16 +149,16 @@ async function handleAutoReply(leadId, { channel, from, text, subject, fetchImpl
   const draft = await generateReply({ lead, text, channel, fetchImpl });
   if (!draft.ok) return { sent: false, reason: draft.error || 'ai' };
   if (channel === 'email') {
-    const outlook = require('./outlook');
-    const sent = await outlook.sendEmail({
+    const crmMail = require('./crm-mail');
+    const sent = await crmMail.sendLeadEmail({
+      lead,
       to: lead.email,
       subject: subject ? `Re: ${String(subject).replace(/^re:\s*/i, '')}` : 'JF Hauling',
       body: draft.text,
-      replyToId: outlook.graphMessageId(lead),
+      ai: true,
       fetchImpl,
     });
     if (!sent.ok) return { sent: false, reason: sent.error };
-    leads.addTimeline(lead.id, { kind: 'email', direction: 'out', subject: subject ? `Re: ${String(subject).replace(/^re:\s*/i, '')}` : 'JF Hauling', body: draft.text, ai: true });
   } else if (channel === 'sms') {
     const twilio = require('./twilio');
     const sent = await twilio.sendSms({ to: lead.phone, body: draft.text, fetchImpl });
