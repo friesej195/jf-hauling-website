@@ -10,6 +10,8 @@ const dispatcher = require('./dispatcher');
 const mailer = require('./mailer');
 const llm = require('./llm');
 const { fmtLbs, fmtFt, fmtShedSize, MULE_NOTE, V } = require('./validators');
+const leads = require('./leads');
+const crm = require('./crm');
 
 const app = express();
 app.disable('x-powered-by');
@@ -186,6 +188,13 @@ async function saveQuote(s) {
     distance: s.distance, estimate: s.estimate, flags: s.flags, transcript: s.transcript,
   };
   store.insert('quotes', rec);
+  try {
+    const savedLead = leads.createFromQuote(rec);
+    if (!savedLead.ok) console.error(`[leads] failed quote=${id} error=${savedLead.error}`);
+    else if (!savedLead.duplicate) console.log(`[leads] created id=${savedLead.lead.id} source=website quote=${id}`);
+  } catch (err) {
+    console.error(`[leads] failed quote=${id} error=${err && err.message ? String(err.message).replace(/[\r\n]/g, ' ').slice(0, 180) : 'save failed'}`);
+  }
   await mailer.notify(
     `[${B.name}] Quote request ${id}${s.flags.length ? ' — NEEDS REVIEW' : ''}`,
     quoteAlert(rec),
@@ -256,6 +265,8 @@ app.get('/admin/quotes.csv', adminAuth, (req, res) => {
   res.type('text/csv').attachment('quote-requests.csv').send([cols.join(','), ...rows].join('\n'));
 });
 
+crm.mount(app);
+
 app.use((req, res) => res.status(404).type('html').send(render(path.join(PUB, '404.html'))));
 
 if (config.server.adminPassword === 'change-me') console.warn('⚠  ADMIN_PASSWORD is the default "change-me" — set it before going live.');
@@ -263,4 +274,6 @@ if (config.pricing.isExample) console.warn('⚠  Pricing uses EXAMPLE rates — 
 if (config.google.apiKey) console.log(`[reviews] Places API key is set. Reviews stay in memory for ${Math.round(config.google.cacheMs / 3600000)}h and are not saved to disk.`);
 else console.log('[reviews] No GOOGLE_PLACES_API_KEY — showing manualReviews from config.js.');
 console.log(`[mailer] mode=${mailer.mode()}`);
+if (!config.server.crmPassword) console.warn('⚠  CRM_PASSWORD is not set — /crm sign-in is disabled.');
+if (!config.server.crmApiToken) console.warn('⚠  CRM_API_TOKEN is not set — POST /api/leads is disabled.');
 app.listen(config.server.port, () => console.log(`${B.name} site running on http://localhost:${config.server.port} (assistant mode: ${llm.enabled() ? 'AI + guided' : 'guided'})`));

@@ -11,6 +11,7 @@
     "dev": "node --watch server/server.js",
     "test": "node tests/e2e.js",
     "test:mail": "node tests/mail.js",
+    "test:crm": "node tests/crm.js",
     "test:reviews": "node tests/reviews.js"
   },
   "keywords": [],

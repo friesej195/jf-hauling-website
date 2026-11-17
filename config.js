@@ -105,6 +105,9 @@ module.exports = {
     port: num('PORT', 3000),
     siteUrl: env('SITE_URL', ''), // e.g. 'https://www.jfhauling.ca' — used for social-share image links
     adminPassword: env('ADMIN_PASSWORD', 'change-me'),
+    // Private leads CRM. Blank disables sign-in / the email API. Never put the real values in this file.
+    crmPassword: env('CRM_PASSWORD', ''),
+    crmApiToken: env('CRM_API_TOKEN', ''),
     dataDir: env('DATA_DIR', require('path').join(__dirname, 'data')),
   },
   llm: {
