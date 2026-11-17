@@ -3,7 +3,8 @@
 const crypto = require('crypto');
 const store = require('./store');
 
-const SOURCES = ['website', 'email', 'phone', 'other'];
+const SOURCES = ['website', 'email', 'phone', 'sms', 'other'];
+const EXTERNAL_MAX = 512;
 const STATUSES = ['New', 'Contacted', 'Quoted', 'Booked', 'Lost'];
 const CLOSED = new Set(['Booked', 'Lost']);
 
@@ -69,8 +70,8 @@ function cleanInput(raw, { defaultSource = 'phone' } = {}) {
   const followRaw = clip(text(src.followUpDate), 20);
   const followUpDate = normDate(followRaw);
   if (followRaw && followUpDate == null) return { error: 'Follow-up date must be a real calendar date.' };
-  const externalId = clip(text(src.externalId), 240);
-  if (externalId.length > 200) return { error: 'external_id is too long.' };
+  const externalId = clip(text(src.externalId), EXTERNAL_MAX + 40);
+  if (externalId.length > EXTERNAL_MAX) return { error: 'external_id is too long.' };
   const value = {
     source,
     name: clip(text(src.name), 120),
@@ -119,6 +120,9 @@ function create(raw, opts = {}) {
     message: v.message,
     status: v.status,
     notes: v.note ? [{ at: now, text: v.note }] : [],
+    timeline: [],
+    aiAutoReply: false,
+    needsJohan: false,
     followUpDate: v.followUpDate,
     externalId: v.externalId,
     quoteId: opts.quoteId ? clip(opts.quoteId, 40) : '',
@@ -242,12 +246,88 @@ function update(id, raw) {
   return saved ? { ok: true, lead: saved } : { ok: false, status: 404, error: 'That lead was not found.' };
 }
 
+function addTimeline(id, event) {
+  const current = all().find((r) => r.id === id);
+  if (!current) return { ok: false, status: 404, error: 'That lead was not found.' };
+  const externalId = clip(event.externalId, EXTERNAL_MAX);
+  const timeline = Array.isArray(current.timeline) ? current.timeline.slice() : [];
+  if (externalId && timeline.some((item) => item.externalId === externalId)) {
+    return { ok: true, duplicate: true, lead: current };
+  }
+  const at = event.at || new Date().toISOString();
+  const item = {
+    id: crypto.randomBytes(4).toString('hex'),
+    at,
+    kind: ['email', 'sms', 'note'].includes(event.kind) ? event.kind : 'note',
+    direction: event.direction === 'in' || event.direction === 'out' ? event.direction : '',
+    subject: clip(event.subject, 200),
+    body: clipMulti(event.body, 4000),
+    ai: !!event.ai,
+    externalId,
+  };
+  if (!item.body && !item.subject) return { ok: false, status: 400, error: 'That message was empty.' };
+  timeline.push(item);
+  const saved = store.update('leads', id, { timeline: timeline.slice(-300) });
+  return saved ? { ok: true, duplicate: false, lead: saved, item } : { ok: false, status: 404, error: 'That lead was not found.' };
+}
+
+function setFlags(id, patch) {
+  const current = all().find((r) => r.id === id);
+  if (!current) return null;
+  const next = {};
+  if (patch.aiAutoReply != null) next.aiAutoReply = !!patch.aiAutoReply;
+  if (patch.needsJohan != null) next.needsJohan = !!patch.needsJohan;
+  return store.update('leads', id, next);
+}
+
+function findByExternalId(externalId) {
+  const id = String(externalId || '');
+  if (!id) return null;
+  return all().find((r) => r.externalId === id || (r.timeline || []).some((item) => item.externalId === id)) || null;
+}
+
+function findByEmail(email) {
+  const needle = String(email || '').trim().toLowerCase();
+  if (!needle) return null;
+  const matches = all().filter((r) => String(r.email || '').toLowerCase() === needle);
+  matches.sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  return matches[0] || null;
+}
+
+function findByPhone(phone) {
+  const phoneUtil = require('./phone');
+  const matches = all().filter((r) => phoneUtil.phonesMatch(r.phone, phone));
+  matches.sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  return matches[0] || null;
+}
+
+function conversation(lead) {
+  const items = [];
+  const seen = new Set();
+  for (const item of (lead && lead.timeline) || []) {
+    const key = `${item.kind}|${item.at}|${item.direction}|${item.body}`;
+    if (item.externalId && seen.has(`id:${item.externalId}`)) continue;
+    if (item.externalId) seen.add(`id:${item.externalId}`);
+    seen.add(key);
+    items.push(item);
+  }
+  for (const note of (lead && lead.notes) || []) {
+    const key = `note|${note.at}||${note.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ at: note.at, kind: 'note', direction: '', subject: '', body: note.text, ai: false });
+  }
+  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return items;
+}
+
 function haystack(lead) {
   const notes = (lead.notes || []).map((n) => n.text).join(' ');
+  const timeline = (lead.timeline || []).map((n) => `${n.subject || ''} ${n.body || ''}`).join(' ');
   return [
     lead.id, lead.quoteId, lead.externalId, lead.name, lead.phone, lead.email,
     lead.pickup, lead.dropoff, lead.loadType, lead.shedSize, lead.quotedPrice,
-    lead.message, lead.status, lead.source, notes,
+    lead.message, lead.status, lead.source, notes, timeline,
   ].join(' ').toLowerCase();
 }
 
@@ -327,4 +407,5 @@ function publicLead(lead) {
 module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
+  addTimeline, setFlags, findByExternalId, findByEmail, findByPhone, conversation,
 };

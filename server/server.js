@@ -12,6 +12,9 @@ const llm = require('./llm');
 const { fmtLbs, fmtFt, fmtShedSize, MULE_NOTE, V } = require('./validators');
 const leads = require('./leads');
 const crm = require('./crm');
+const outlook = require('./outlook');
+const twilioSms = require('./twilio');
+const aiReply = require('./ai-reply');
 
 const app = express();
 app.disable('x-powered-by');
@@ -276,4 +279,6 @@ else console.log('[reviews] No GOOGLE_PLACES_API_KEY — showing manualReviews f
 console.log(`[mailer] mode=${mailer.mode()}`);
 if (!config.server.crmPassword) console.warn('⚠  CRM_PASSWORD is not set — /crm sign-in is disabled.');
 if (!config.server.crmApiToken) console.warn('⚠  CRM_API_TOKEN is not set — POST /api/leads is disabled.');
+console.log(`[crm] outlook=${outlook.configured() ? (outlook.connected() ? 'connected' : 'ready') : 'off'} twilio=${twilioSms.configured() ? 'ready' : 'off'} ai=${aiReply.keySet() ? 'ready' : 'off'}`);
+outlook.startInboxPoll();
 app.listen(config.server.port, () => console.log(`${B.name} site running on http://localhost:${config.server.port} (assistant mode: ${llm.enabled() ? 'AI + guided' : 'guided'})`));

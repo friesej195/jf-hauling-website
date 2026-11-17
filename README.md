@@ -129,6 +129,8 @@ Other JSON fields: `source`, `shed_size`, `quoted_price`, `status` (`New`, `Cont
 
 On Render, set `CRM_PASSWORD` and `CRM_API_TOKEN` on the **jf-hauling** service. A blueprint sync does not fill new secrets on a service that already exists. Leads are written under `DATA_DIR` (`/var/data` on the existing disk), in `leads.json`.
 
+Email from the CRM uses the owner’s Outlook.com mailbox (Microsoft Graph). Texts use Twilio. Optional AI drafts and auto-replies use `OPENAI_API_KEY`. The exact Azure, Twilio, and env-var steps are in `docs/crm-setup.md`. The Outlook refresh token is stored at `DATA_DIR/outlook-token.json` (mode 600) and is not in git.
+
 ## 5. Putting it online (plain-language options)
 
 Whichever you choose, set at least `ADMIN_PASSWORD` (and your real rates) and make sure the `data` folder is kept between restarts.
@@ -213,6 +215,8 @@ tests/e2e.js           ← automated end-to-end quote tests (npm test)
 tests/reviews.js       ← reviews page tests, no Google key needed (npm run test:reviews)
 tests/mail.js          ← mocked alert and storage tests (npm run test:mail)
 tests/crm.js           ← leads CRM, quote → lead, and POST /api/leads (npm run test:crm)
+tests/crm-channels.js  ← Outlook, Twilio, AI guardrails, timeline (npm run test:channels)
+docs/crm-setup.md      ← Azure app, Twilio webhook, and AI env vars
 tests/screenshots.py   ← Playwright screenshots
 screenshots/           ← screenshots of the site
 ```

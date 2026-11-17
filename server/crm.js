@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const leads = require('./leads');
+const outlook = require('./outlook');
+const twilio = require('./twilio');
+const ai = require('./ai-reply');
+const crmSettings = require('./crm-settings');
 
 const COOKIE = 'jf_crm';
 const TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -93,7 +97,7 @@ function fmtDay(isoDate) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(new Date(Date.UTC(y, m - 1, d, 12)));
 }
 
-const SOURCE_LABEL = { website: 'Website', email: 'Email', phone: 'Phone', other: 'Other' };
+const SOURCE_LABEL = { website: 'Website', email: 'Email', phone: 'Phone', sms: 'Text', other: 'Other' };
 
 function privateHeaders(res) {
   res.set({
@@ -117,7 +121,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .appbar .sub{display:block;color:#F6B913;font-size:.72rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
 .appbar .spacer{flex:1}
 .iconbtn, .textbtn{background:transparent;border:0;color:#fff;padding:8px;min-width:44px;min-height:44px;border-radius:10px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-.textbtn{font-weight:700;font-size:.95rem}
+.textbtn{font-weight:700;font-size:.82rem;min-width:0;min-height:32px;padding:2px 4px}
+.appbar .tools{display:flex;flex-direction:column;align-items:flex-end;flex:0 0 auto}
 main{padding:14px 14px calc(92px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:6;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
 .dock a{text-decoration:none;text-align:center;font-size:.92rem;font-weight:800;color:var(--muted);padding:8px 4px;border-radius:12px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:6px}
@@ -174,6 +179,16 @@ details{margin-top:8px}
 summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:pointer}
 .count{color:var(--muted);font-size:.88rem;margin:0 0 8px}
 .back{color:#fff}
+.tl{border-top:1px solid var(--line);padding:10px 0}
+.tl:first-child{border-top:0}
+.who{font-size:.72rem;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.who.out{color:#1e3a5f}
+.who.in{color:#146c3a}
+.flag{display:inline-block;background:#fdecec;color:#9b2c2c;font-weight:800;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-left:6px}
+.switch{display:flex;align-items:center;gap:10px;font-size:1rem;color:var(--ink);font-weight:800}
+.switch input{width:1.3rem;height:1.3rem}
+.draft-status{min-height:1.2em}
+.panel .btn{margin-top:8px}
 `;
 
 function page({ title, body, authed, active, dueCount, csrf, back }) {
@@ -183,7 +198,7 @@ function page({ title, body, authed, active, dueCount, csrf, back }) {
     <a href="/crm/new" class="${active === 'new' ? 'on' : ''}" ${active === 'new' ? 'aria-current="page"' : ''}>New</a>
     <a href="/crm/export.csv">CSV</a>
   </nav>` : '';
-  const logout = authed ? `<form method="post" action="/crm/logout"><input type="hidden" name="_csrf" value="${esc(csrf)}"><button class="textbtn" type="submit">Log out</button></form>` : '';
+  const logout = authed ? `<div class="tools"><a class="textbtn" href="/crm/settings">Settings</a><form method="post" action="/crm/logout"><input type="hidden" name="_csrf" value="${esc(csrf)}"><button class="textbtn" type="submit">Log out</button></form></div>` : '';
   const backLink = back ? `<a class="iconbtn back" href="${esc(back)}" aria-label="Back">‹</a>` : '';
   const heading = title.replace(/ \|.*$/, '');
   return `<!doctype html>
@@ -321,6 +336,7 @@ function leadCard(lead, today) {
       <div class="card-top"><strong>${esc(name)}</strong><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span></div>
       ${route ? `<div class="route">${esc(route)}</div>` : ''}
       <div class="meta">${esc(SOURCE_LABEL[lead.source] || lead.source)}${bits ? ` · ${esc(bits)}` : ''}</div>
+      ${lead.needsJohan ? '<div class="dueflag overdue">Needs Johan</div>' : ''}
       ${due}
     </a>
     ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
@@ -380,24 +396,117 @@ function newPage(req, res, { error = '', value = {}, status = 200 } = {}) {
   sendHtml(req, res, status, shell(req, req.crm, { title: 'New lead', main, active: 'new', back: '/crm/' }));
 }
 
-function detailPage(req, res, lead, { error = '', status = 200, saved = false } = {}) {
+const SENT = { email: 'Email sent.', sms: 'Text sent.', ai: 'AI auto-reply updated.', cleared: 'Needs Johan cleared.', saved: 'Saved.' };
+const ERRORS = {
+  outlook: 'Connect Outlook in Settings before this can send.',
+  'outlook-off': 'Outlook email is off until Microsoft sign-in is set up in Settings.',
+  'outlook-send': 'Outlook could not send that email.',
+  twilio: 'Texting is off until Twilio is set up in Settings.',
+  'twilio-off': 'Texting is off until Twilio is set up in Settings.',
+  'twilio-send': 'That text could not be sent.',
+  'no-email': 'This lead has no email address.',
+  'no-phone': 'This lead has no mobile number we can text.',
+  empty: 'Write a message before sending.',
+  ai: 'AI replies are off until an OpenAI key is set.',
+  'ai-empty': 'AI did not return a draft.',
+};
+
+function flash(req) {
+  const sent = SENT[req.query.sent] || (req.query.saved === '1' ? SENT.saved : '');
+  const problem = ERRORS[req.query.error] || '';
+  return `${sent ? `<p class="banner" role="status">${esc(sent)}</p>` : ''}${problem ? `<p class="banner bad" role="alert">${esc(problem)}</p>` : ''}`;
+}
+
+function emailSubject(lead) {
+  const last = leads.conversation(lead).find((item) => item.kind === 'email' && item.subject);
+  if (last) return `Re: ${String(last.subject).replace(/^re:\s*/i, '')}`.slice(0, 200);
+  return `JF Hauling${lead.loadType ? ` — ${lead.loadType}` : ''}`.slice(0, 200);
+}
+
+function timelineHtml(lead) {
+  const items = leads.conversation(lead);
+  if (!items.length) return '<p class="hint">Notes, emails, and texts will show up here.</p>';
+  return items.map((item) => {
+    const label = item.kind === 'email' ? (item.direction === 'in' ? 'Email in' : 'Email out') : item.kind === 'sms' ? (item.direction === 'in' ? 'Text in' : 'Text out') : 'Note';
+    return `<article class="tl"><div class="who ${esc(item.direction || '')}">${esc(label)}${item.ai ? ' · AI' : ''}</div><time datetime="${esc(item.at)}">${esc(fmtWhen(item.at))}</time>${item.subject ? `<div class="meta">${esc(item.subject)}</div>` : ''}<div class="msg">${esc(item.body || '')}</div></article>`;
+  }).join('');
+}
+
+const DRAFT_JS = `<script>
+document.querySelectorAll('[data-draft]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var channel = btn.getAttribute('data-draft');
+    var box = document.getElementById(channel + '-body');
+    var status = document.getElementById(channel + '-draft-status');
+    var csrf = document.querySelector('input[name=_csrf]');
+    btn.disabled = true;
+    if (status) status.textContent = 'Writing a draft…';
+    fetch(btn.getAttribute('data-url'), { method:'POST', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify({ _csrf: csrf ? csrf.value : '', channel: channel }) })
+      .then(function(r){ return r.json().then(function(data){ return { ok:r.ok, data:data }; }); })
+      .then(function(res){
+        if (res.ok && res.data && res.data.text) { box.value = res.data.text; if (status) status.textContent = 'Draft ready. Read it, then press send.'; }
+        else if (status) status.textContent = (res.data && res.data.error) || 'No draft.';
+      })
+      .catch(function(){ if (status) status.textContent = 'No draft.'; })
+      .then(function(){ btn.disabled = false; });
+  });
+});
+</script>`;
+
+function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
   const tel = leads.telHref(lead.phone);
   const mail = leads.mailHref(lead.email);
   const name = lead.name || 'No name';
-  const notes = (lead.notes || []).slice().reverse().map((n) => `<div class="note"><time datetime="${esc(n.at)}">${esc(fmtWhen(n.at))}</time><div>${esc(n.text)}</div></div>`).join('');
   const actions = [
     tel ? `<a class="btn btn-yellow" href="${esc(tel)}">Call</a>` : '',
     mail ? `<a class="btn btn-line" href="${esc(mail)}">Email</a>` : '',
   ].filter(Boolean).join('');
+  const csrf = esc(req.crm.csrf);
+  const emailHint = !outlook.configured()
+    ? '<p class="hint">Outlook email is off until Microsoft sign-in is set up in Settings.</p>'
+    : outlook.connected() ? '' : '<p class="hint">Connect Outlook in Settings, then you can send from this lead.</p>';
+  const smsHint = twilio.configured() ? '' : '<p class="hint">Texting is off until Twilio is set up in Settings.</p>';
+  const aiHint = ai.keySet() ? '' : '<p class="hint">Draft with AI is off until an OpenAI key is set.</p>';
   const main = `
-    ${saved ? '<p class="banner" role="status">Saved.</p>' : ''}
+    ${flash(req)}
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
-    <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}</p>
+    <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
     ${actions ? `<div class="actions">${actions}</div>` : '<p class="hint">No phone or email on this lead yet.</p>'}
+    <form class="panel" method="post" action="/crm/lead/${esc(lead.id)}/ai">
+      <input type="hidden" name="_csrf" value="${csrf}">
+      <label class="switch"><input type="checkbox" name="aiAutoReply" value="1"${lead.aiAutoReply ? ' checked' : ''}> AI auto-reply</label>
+      <p class="hint">When this is on, a new email or text from this lead can be answered on the same channel. At most 3 automatic replies a day.</p>
+      ${ai.globalOn() ? '' : '<p class="hint">The global auto-reply switch is off, so nothing sends on its own.</p>'}
+      <button class="btn btn-dark" type="submit">Save auto-reply</button>
+    </form>
+    ${lead.needsJohan ? `<form method="post" action="/crm/lead/${esc(lead.id)}/ai"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="clearJohan" value="1"><button class="btn btn-line" type="submit">Clear Needs Johan</button></form>` : ''}
+    <form class="panel" method="post" action="/crm/lead/${esc(lead.id)}/email" id="email-composer">
+      <h2>Email</h2>
+      <p class="meta">To ${esc(lead.email || '—')}</p>
+      ${emailHint}
+      ${aiHint}
+      <label>Subject<input name="subject" maxlength="200" value="${esc(emailSubject(lead))}"></label>
+      <label>Message<textarea id="email-body" name="body" maxlength="4000"></textarea></label>
+      <p class="draft-status" id="email-draft-status" role="status"></p>
+      <button class="btn btn-line" type="button" data-draft="email" data-url="/crm/lead/${esc(lead.id)}/draft">Draft with AI</button>
+      <button class="btn btn-yellow" type="submit">Send email</button>
+      <input type="hidden" name="_csrf" value="${csrf}">
+    </form>
+    <form class="panel" method="post" action="/crm/lead/${esc(lead.id)}/sms" id="text-composer">
+      <h2>Text</h2>
+      <p class="meta">To ${esc(phoneDisplay(lead.phone) || '—')}</p>
+      ${smsHint}
+      <label>Message<textarea id="sms-body" name="body" maxlength="1000"></textarea></label>
+      <p class="draft-status" id="sms-draft-status" role="status"></p>
+      <button class="btn btn-line" type="button" data-draft="sms" data-url="/crm/lead/${esc(lead.id)}/draft">Draft with AI</button>
+      <button class="btn btn-yellow" type="submit">Send text</button>
+      <input type="hidden" name="_csrf" value="${csrf}">
+    </form>
+    <section class="panel"><h2>Conversation</h2>${timelineHtml(lead)}</section>
     <form method="post" action="/crm/lead/${esc(lead.id)}">
-      <input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}">
+      <input type="hidden" name="_csrf" value="${csrf}">
       <div class="panel">
         <div class="row2">
           <label>Status<select name="status">${leads.STATUSES.map((s) => `<option${s === lead.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
@@ -420,9 +529,68 @@ function detailPage(req, res, lead, { error = '', status = 200, saved = false } 
       </details>
       <div class="savebar"><button class="btn btn-yellow" type="submit">Save</button></div>
     </form>
-    <section class="panel"><h2>Notes</h2>${notes || '<p class="hint">No notes yet.</p>'}</section>
-    <section class="panel"><h2>Original message</h2><p class="msg">${esc(lead.message || '—')}</p>${lead.externalId ? `<p class="meta">Reference ${esc(lead.externalId)}</p>` : ''}</section>`;
+    <section class="panel"><h2>Original message</h2><p class="msg">${esc(lead.message || '—')}</p>${lead.externalId ? `<p class="meta">Reference ${esc(lead.externalId)}</p>` : ''}</section>
+    ${DRAFT_JS}`;
   sendHtml(req, res, status, shell(req, req.crm, { title: name, main, active: 'all', back: '/crm/' }));
+}
+
+function phoneDisplay(phone) {
+  const e164 = require('./phone').toE164(phone);
+  return e164 || phone || '';
+}
+
+function settingsPage(req, res) {
+  const checked = /^\d+$/.test(String(req.query.checked || '')) ? String(req.query.checked) : '';
+  const saved = req.query.saved === '1';
+  const connected = outlook.connected();
+  const account = outlook.accountEmail();
+  const globalOn = crmSettings.read().aiAutoReply !== false;
+  let outlookBlock;
+  if (!outlook.configured()) {
+    outlookBlock = '<p class="banner bad">Outlook email is off. Set MS_CLIENT_ID, MS_CLIENT_SECRET, and MS_REDIRECT_URI on the server, then come back and connect.</p>';
+  } else if (connected) {
+    outlookBlock = `<p class="banner">Outlook is connected${account ? ` as ${esc(account)}` : ''}.</p>
+      <form method="post" action="/crm/inbox/check"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><button class="btn btn-dark" type="submit">Check inbox</button></form>
+      <form method="post" action="/crm/oauth/disconnect"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><button class="btn btn-line" type="submit">Disconnect Outlook</button></form>`;
+  } else {
+    outlookBlock = '<p class="hint">Sign in once with the jfhauling@outlook.com Microsoft account. The refresh token stays on the server disk.</p><p><a class="btn btn-yellow" href="/crm/oauth/start">Connect Outlook</a></p>';
+  }
+  const twilioBlock = twilio.configured()
+    ? `<p class="banner">Texting is on from ${esc(config.twilio.fromNumber)}. In Twilio, set the inbound webhook to <strong>https://jfhauling.ca/api/twilio/sms</strong>.</p>`
+    : '<p class="banner bad">Texting is off. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER on the server.</p>';
+  let aiBlock;
+  if (!ai.keySet()) aiBlock = '<p class="banner bad">AI replies are off until OPENAI_API_KEY is set.</p>';
+  else if (!ai.envAllows()) aiBlock = '<p class="banner bad">AI auto-reply is switched off on the server (AI_AUTOREPLY_ENABLED).</p>';
+  else aiBlock = `<form method="post" action="/crm/settings"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><label class="switch"><input type="checkbox" name="aiAutoReply" value="1"${globalOn ? ' checked' : ''}> AI auto-reply for leads that have it on</label><p class="hint">Each lead still starts off. This switch stops every automatic reply at once. Draft with AI still works.</p><button class="btn btn-dark" type="submit">Save</button></form>`;
+  const main = `
+    ${saved ? '<p class="banner" role="status">Saved.</p>' : ''}
+    ${flash(req)}
+    ${checked ? `<p class="banner" role="status">Inbox checked. ${esc(checked)} new message${checked === '1' ? '' : 's'} filed.</p>` : ''}
+    <section class="panel"><h2>Outlook</h2>${outlookBlock}</section>
+    <section class="panel"><h2>Texting</h2>${twilioBlock}</section>
+    <section class="panel"><h2>AI auto-reply</h2>${aiBlock}</section>
+    <p class="hint">Setup steps are in docs/crm-setup.md.</p>`;
+  sendHtml(req, res, 200, shell(req, req.crm, { title: 'Settings', main, active: '', back: '/crm/' }));
+}
+
+const OAUTH_COOKIE = 'jf_oauth';
+function setOauthCookie(req, res) {
+  const state = crypto.randomBytes(16).toString('hex');
+  const mac = crypto.createHmac('sha256', password()).update(state).digest('base64url');
+  res.cookie(OAUTH_COOKIE, `${state}.${mac}`, { ...cookieBase(req), maxAge: 10 * 60 * 1000 });
+  return state;
+}
+function oauthStateOk(req, state) {
+  const token = readCookie(req, OAUTH_COOKIE);
+  if (!token || !state || !token.includes('.')) return false;
+  const i = token.lastIndexOf('.');
+  const body = token.slice(0, i);
+  const mac = token.slice(i + 1);
+  const expected = crypto.createHmac('sha256', password()).update(body).digest('base64url');
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b) || !shaEqual(body, String(state))) return false;
+  return true;
 }
 
 function fromForm(body) {
@@ -487,6 +655,7 @@ function mount(app) {
       'Disallow: /crm',
       'Disallow: /admin',
       'Disallow: /api/leads',
+      'Disallow: /api/twilio',
       '',
     ].join('\n'));
   });
@@ -588,6 +757,100 @@ function mount(app) {
     privateHeaders(res);
     const { rows } = leads.query({});
     res.type('text/csv').attachment('jf-hauling-leads.csv').send(leads.toCsv(rows));
+  });
+  app.get('/crm/settings', requireSession, (req, res) => settingsPage(req, res));
+  app.post('/crm/settings', requireSession, requireCsrf, (req, res) => {
+    crmSettings.write({ aiAutoReply: req.body && req.body.aiAutoReply === '1' });
+    res.redirect(303, '/crm/settings?saved=1');
+  });
+  app.get('/crm/oauth/start', requireSession, (req, res) => {
+    if (!outlook.configured()) return res.redirect(303, '/crm/settings?error=outlook-off');
+    const state = setOauthCookie(req, res);
+    res.redirect(302, outlook.authorizeUrl(state));
+  });
+  app.get('/crm/oauth/callback', requireSession, async (req, res) => {
+    res.clearCookie(OAUTH_COOKIE, cookieBase(req));
+    if (req.query.error || !req.query.code || !oauthStateOk(req, req.query.state)) {
+      return res.redirect(303, '/crm/settings?error=outlook');
+    }
+    try {
+      await outlook.exchangeCode(String(req.query.code));
+      res.redirect(303, '/crm/settings?saved=1');
+    } catch {
+      res.redirect(303, '/crm/settings?error=outlook');
+    }
+  });
+  app.post('/crm/oauth/disconnect', requireSession, requireCsrf, (req, res) => {
+    outlook.disconnect();
+    console.log('[outlook] disconnected');
+    res.redirect(303, '/crm/settings?saved=1');
+  });
+  app.post('/crm/inbox/check', requireSession, requireCsrf, async (req, res) => {
+    const result = await outlook.pullInbox();
+    const n = (result.created || 0) + (result.logged || 0);
+    res.redirect(303, `/crm/settings?checked=${n}`);
+  });
+  app.post('/crm/lead/:id/ai', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    if (req.body && req.body.clearJohan === '1') {
+      leads.setFlags(lead.id, { needsJohan: false });
+      return res.redirect(303, `/crm/lead/${lead.id}?sent=cleared`);
+    }
+    leads.setFlags(lead.id, { aiAutoReply: req.body && req.body.aiAutoReply === '1' });
+    res.redirect(303, `/crm/lead/${lead.id}?sent=ai`);
+  });
+  app.post('/crm/lead/:id/email', requireSession, requireCsrf, async (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    const subject = String((req.body && req.body.subject) || '').trim().slice(0, 200);
+    const body = String((req.body && req.body.body) || '').trim().slice(0, 4000);
+    const back = (code) => res.redirect(303, `/crm/lead/${lead.id}?error=${code}`);
+    if (!lead.email) return back('no-email');
+    if (!body) return back('empty');
+    const sent = await outlook.sendEmail({ to: lead.email, subject: subject || 'JF Hauling', body, replyToId: outlook.graphMessageId(lead) });
+    if (!sent.ok) return back(sent.error || 'outlook-send');
+    leads.addTimeline(lead.id, { kind: 'email', direction: 'out', subject: subject || 'JF Hauling', body, ai: false });
+    res.redirect(303, `/crm/lead/${lead.id}?sent=email`);
+  });
+  app.post('/crm/lead/:id/sms', requireSession, requireCsrf, async (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    const body = String((req.body && req.body.body) || '').trim().slice(0, 1000);
+    const back = (code) => res.redirect(303, `/crm/lead/${lead.id}?error=${code}`);
+    if (!lead.phone) return back('no-phone');
+    if (!body) return back('empty');
+    const sent = await twilio.sendSms({ to: lead.phone, body });
+    if (!sent.ok) return back(sent.error || 'twilio-send');
+    leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body, ai: false });
+    res.redirect(303, `/crm/lead/${lead.id}?sent=sms`);
+  });
+  app.post('/crm/lead/:id/draft', requireSession, requireCsrf, async (req, res) => {
+    privateHeaders(res);
+    const lead = leads.find(req.params.id);
+    if (!lead) return res.status(404).json({ error: 'That lead was not found.' });
+    const channel = req.body && req.body.channel === 'sms' ? 'sms' : 'email';
+    const inbound = leads.conversation(lead).find((item) => item.direction === 'in');
+    const text = (inbound && inbound.body) || lead.message || 'The customer has not written a message yet. Write a short check-in.';
+    const draft = await ai.generateReply({ lead, text, channel });
+    if (!draft.ok) return res.status(draft.error === 'ai-empty' ? 502 : 503).json({ error: ERRORS[draft.error] || ERRORS.ai });
+    res.json({ text: draft.text });
+  });
+  app.post('/api/twilio/sms', async (req, res) => {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+    if (!twilio.configured()) return res.status(503).type('text').send('Texting is not set up.');
+    const params = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const ok = twilio.validateSignature(twilio.requestUrl(req), params, req.get('X-Twilio-Signature') || req.get('x-twilio-signature'), config.twilio.authToken);
+    if (!ok) {
+      console.error('[twilio] inbound rejected');
+      return res.status(403).type('text').send('Forbidden');
+    }
+    try {
+      await twilio.ingestInbound({ from: params.From, body: params.Body, messageSid: params.MessageSid || params.SmsMessageSid });
+    } catch {
+      console.error('[twilio] inbound failed');
+    }
+    res.type('text/xml').send('<Response></Response>');
   });
   app.post('/crm/logout', requireSession, requireCsrf, (req, res) => {
     clearSession(req, res);

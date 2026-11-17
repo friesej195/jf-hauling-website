@@ -110,6 +110,19 @@ module.exports = {
     crmApiToken: env('CRM_API_TOKEN', ''),
     dataDir: env('DATA_DIR', require('path').join(__dirname, 'data')),
   },
+  // Outlook.com mailbox for the CRM. Blank client id or secret keeps Connect Outlook off.
+  // Personal Microsoft accounts use tenant "consumers".
+  microsoft: {
+    clientId: env('MS_CLIENT_ID', ''),
+    clientSecret: env('MS_CLIENT_SECRET', ''),
+    redirectUri: env('MS_REDIRECT_URI', 'https://jfhauling.ca/crm/oauth/callback'),
+    tenant: env('MS_TENANT', 'consumers'),
+  },
+  twilio: {
+    accountSid: env('TWILIO_ACCOUNT_SID', ''),
+    authToken: env('TWILIO_AUTH_TOKEN', ''),
+    fromNumber: env('TWILIO_FROM_NUMBER', ''),
+  },
   llm: {
     apiKey: env('OPENAI_API_KEY', ''),
     baseUrl: env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),

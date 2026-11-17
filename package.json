@@ -12,6 +12,7 @@
     "test": "node tests/e2e.js",
     "test:mail": "node tests/mail.js",
     "test:crm": "node tests/crm.js",
+    "test:channels": "node tests/crm-channels.js",
     "test:reviews": "node tests/reviews.js"
   },
   "keywords": [],
