@@ -34,3 +34,9 @@ services:
         sync: false
       - key: GOOGLE_REVIEWS_CACHE_HOURS
         value: "6"
+      # Private leads CRM. Set both in the Dashboard. A blueprint sync does not
+      # fill a new secret on a service that already exists, and these are not copied into previews.
+      - key: CRM_PASSWORD
+        sync: false
+      - key: CRM_API_TOKEN
+        sync: false

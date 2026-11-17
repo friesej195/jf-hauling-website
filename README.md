@@ -70,6 +70,8 @@ These are made-up sample rates so the estimator works. **Replace them with your 
 |---|---|---|
 | `PORT` | 3000 | |
 | `ADMIN_PASSWORD` | `change-me` | **Change before going live** |
+| `CRM_PASSWORD` | (blank) | Password for the private leads CRM at `/crm`. Blank keeps sign-in off. There is no default |
+| `CRM_API_TOKEN` | (blank) | Bearer token for `POST /api/leads`. Blank keeps that API off |
 | `OPENAI_API_KEY` | (blank) | Optional — turns on AI understanding |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible service works (e.g. OpenRouter, Groq, Together, a local Ollama at `http://localhost:11434/v1`) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
@@ -98,10 +100,36 @@ The assistant uses free OpenStreetMap services: **Nominatim** to find the addres
 
 ## 4. Where requests go
 
-- Quote requests: `DATA_DIR/quotes.json` · Contact messages: `DATA_DIR/messages.json` (plain files — no database to manage; back up that folder). The default folder is `data/` in the project. On Render it is `/var/data`.
+- Quote requests: `DATA_DIR/quotes.json` · Contact messages: `DATA_DIR/messages.json` · Leads: `DATA_DIR/leads.json` (plain files — no database to manage; back up that folder). The default folder is `data/` in the project. On Render it is `/var/data`.
 - **Admin page** `/admin`: list, search, filter by status (new / needs review / contacted / quoted / booked / closed), click a row to see every detail including the full chat, and **Download CSV** for Excel.
+- **Leads CRM** `/crm`: a separate phone-friendly list for Johan. Every saved website quote also becomes a lead. See **Leads CRM** below.
 
 ---
+
+## Leads CRM
+
+`/crm` is a private lead list for the owner. It is not linked from the public site. Search engines get `noindex` on every CRM response, and `robots.txt` disallows `/crm` and `/api/leads`. There is no public sitemap.
+
+Set `CRM_PASSWORD` in the environment (Render Dashboard → Environment). There is no built-in password. Sign-in uses an HttpOnly cookie (Secure on HTTPS, SameSite=Lax, 14 days). Open `/crm` on the phone and use **Add to Home Screen** — the page includes a manifest and icon so it opens like an app.
+
+The list filters by status, source, and search. **Due** shows follow-ups dated today or earlier that are not Booked or Lost. Open a lead to change status, set the follow-up date, and append a note. Call and email are tap links. **New** is for a lead taken over the phone. **CSV** downloads every lead.
+
+A website quote still saves `quotes.json` and still sends the dispatch email. It also writes one lead with source `website`, the pickup, drop-off, load, shed size, the price range, and a short copy of the request. Saving the lead cannot block the quote: if that write fails, the quote and the email still go through.
+
+`POST /api/leads` accepts leads from an external mailbox process. Send `Authorization: Bearer <CRM_API_TOKEN>` and a JSON object. `source` defaults to `email`. Optional `external_id` (the email message id) is stored once: a second post with the same id returns the original lead and `"duplicate": true`. The token is not written in the page or the logs.
+
+```bash
+curl -s -X POST https://jfhauling.ca/api/leads \
+  -H "Authorization: Bearer $CRM_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"external_id":"<message-id>","name":"A Caller","email":"a@example.ca","phone":"226-555-0100","pickup_location":"Listowel","dropoff_location":"Guelph","load_type":"Flat-deck","original_message":"Can you move a skid steer Tuesday?"}'
+```
+
+Other JSON fields: `source`, `shed_size`, `quoted_price`, `status` (`New`, `Contacted`, `Quoted`, `Booked`, `Lost`), `follow_up_date` (`YYYY-MM-DD`), and `note`.
+
+On Render, set `CRM_PASSWORD` and `CRM_API_TOKEN` on the **jf-hauling** service. A blueprint sync does not fill new secrets on a service that already exists. Leads are written under `DATA_DIR` (`/var/data` on the existing disk), in `leads.json`.
+
+Email from the CRM uses the owner’s Outlook.com mailbox (Microsoft Graph). Texts use Twilio. Optional AI drafts and auto-replies use `OPENAI_API_KEY`. The exact Azure, Twilio, and env-var steps are in `docs/crm-setup.md`. The Outlook refresh token is stored at `DATA_DIR/outlook-token.json` (mode 600) and is not in git.
 
 ## 5. Putting it online (plain-language options)
 
@@ -180,10 +208,15 @@ server/reviews.js      ← Google reviews (Places API, or the manual list in con
 server/llm.js          ← optional OpenAI-compatible AI layer
 server/mailer.js       ← Resend or SMTP dispatch alerts
 server/admin.html      ← admin page
+server/leads.js        ← leads.json records, quote → lead, CSV
+server/crm.js          ← /crm pages, cookie sign-in, POST /api/leads
 public/                ← pages, styles, images, chat widget (public/js/chat.js)
 tests/e2e.js           ← automated end-to-end quote tests (npm test)
 tests/reviews.js       ← reviews page tests, no Google key needed (npm run test:reviews)
 tests/mail.js          ← mocked alert and storage tests (npm run test:mail)
+tests/crm.js           ← leads CRM, quote → lead, and POST /api/leads (npm run test:crm)
+tests/crm-channels.js  ← Outlook, Twilio, AI guardrails, timeline (npm run test:channels)
+docs/crm-setup.md      ← Azure app, Twilio webhook, and AI env vars
 tests/screenshots.py   ← Playwright screenshots
 screenshots/           ← screenshots of the site
 ```
