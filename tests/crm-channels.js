@@ -255,7 +255,7 @@ function cleanEnv(extra) {
   if (login.status === 303) {
     const cookie = (login.headers.getSetCookie()[0] || '').split(';')[0];
     const page = await (await fetch(`http://127.0.0.1:${port}/crm/settings`, { headers: { cookie } })).text();
-    check('settings explain Outlook is off and show the Twilio webhook', page.includes('MS_CLIENT_ID') && page.includes('Texting is on') && page.includes('https://jfhauling.ca/api/twilio/sms') && page.includes('noindex'));
+    check('settings send mail without Outlook and show the Twilio webhook', page.includes('Email sends via JF Hauling mail') && !page.includes('Connect Outlook') && page.includes('Texting is on') && page.includes('https://jfhauling.ca/api/twilio/sms') && page.includes('noindex'));
   } else check('settings explain that Outlook and Twilio are not set up', false, 'login ' + login.status);
   child.kill('SIGTERM');
 

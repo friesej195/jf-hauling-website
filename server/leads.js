@@ -264,11 +264,17 @@ function addTimeline(id, event) {
     body: clipMulti(event.body, 4000),
     ai: !!event.ai,
     externalId,
+    messageId: clip(event.messageId, 240),
   };
   if (!item.body && !item.subject) return { ok: false, status: 400, error: 'That message was empty.' };
   timeline.push(item);
   const saved = store.update('leads', id, { timeline: timeline.slice(-300) });
   return saved ? { ok: true, duplicate: false, lead: saved, item } : { ok: false, status: 404, error: 'That lead was not found.' };
+}
+
+function touchContact(id, at) {
+  const when = at && !Number.isNaN(new Date(at).getTime()) ? new Date(at).toISOString() : new Date().toISOString();
+  return store.update('leads', id, { lastContactAt: when });
 }
 
 function setFlags(id, patch) {
@@ -407,5 +413,5 @@ function publicLead(lead) {
 module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
-  addTimeline, setFlags, findByExternalId, findByEmail, findByPhone, conversation,
+  addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
 };

@@ -43,10 +43,23 @@ function logResult(ok, reference, err) {
   else console.warn(`[mailer] failed ref=${ref} mode=${mode()} error=${redact(err && err.message ? err.message : err)}`);
 }
 
-async function sendResend({ from, to, replyTo, subject, text }) {
-  const payload = { from, to: [to], subject, text };
-  if (replyTo) payload.reply_to = replyTo;
-  const res = await fetch('https://api.resend.com/emails', {
+function addressOnly(from) {
+  const raw = String(from || '').trim();
+  const wrapped = raw.match(/<([^>]+)>/);
+  return (wrapped ? wrapped[1] : raw).trim();
+}
+
+function crmFrom() {
+  return `JF Hauling <${addressOnly(fromAddress())}>`;
+}
+
+async function sendResend(message, fetchImpl = fetch) {
+  const to = Array.isArray(message.to) ? message.to : [message.to];
+  const payload = { from: message.from, to, subject: message.subject, text: message.text };
+  if (message.replyTo) payload.reply_to = message.replyTo;
+  if (message.bcc) payload.bcc = Array.isArray(message.bcc) ? message.bcc : [message.bcc];
+  if (message.headers && Object.keys(message.headers).length) payload.headers = message.headers;
+  const res = await fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.resend.apiKey}`,
@@ -89,8 +102,46 @@ async function notify(subject, text, opts = {}) {
   }
 }
 
+async function sendCustomer({ to, subject, text, messageId, inReplyTo, references, reference, fetchImpl } = {}) {
+  const active = mode();
+  if (active === 'off') return { ok: false, error: 'off' };
+  const replyTo = config.business.email;
+  const bcc = config.mail.crmBcc && config.mail.crmBcc !== '-' && config.mail.crmBcc !== 'off' ? config.mail.crmBcc : '';
+  const headers = {};
+  if (messageId) headers['Message-ID'] = messageId;
+  if (inReplyTo) headers['In-Reply-To'] = inReplyTo;
+  if (references && references.length) headers.References = references.join(' ');
+  const message = { from: crmFrom(), to, replyTo, bcc, subject, text, headers };
+  try {
+    if (active === 'resend') {
+      await sendResend(message, fetchImpl);
+    } else {
+      const transport = getTransport();
+      if (!transport) return { ok: false, error: 'off' };
+      await transport.sendMail({
+        from: message.from,
+        to,
+        bcc: bcc || undefined,
+        replyTo: replyTo || undefined,
+        subject,
+        text,
+        messageId: messageId || undefined,
+        inReplyTo: inReplyTo || undefined,
+        references: references && references.length ? references : undefined,
+      });
+    }
+    logResult(true, reference);
+    return { ok: true };
+  } catch (e) {
+    logResult(false, reference, e);
+    return { ok: false, error: 'mail-send' };
+  }
+}
+
 module.exports = {
   notify,
+  sendCustomer,
+  crmFrom,
   mode,
   enabled: () => mode() !== 'off' && !!config.mail.notifyTo,
 };

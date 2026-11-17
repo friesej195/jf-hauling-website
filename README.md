@@ -129,7 +129,7 @@ Other JSON fields: `source`, `shed_size`, `quoted_price`, `status` (`New`, `Cont
 
 On Render, set `CRM_PASSWORD` and `CRM_API_TOKEN` on the **jf-hauling** service. A blueprint sync does not fill new secrets on a service that already exists. Leads are written under `DATA_DIR` (`/var/data` on the existing disk), in `leads.json`.
 
-Email from the CRM uses the owner’s Outlook.com mailbox (Microsoft Graph). Texts use Twilio. Optional AI drafts and auto-replies use `OPENAI_API_KEY`. The exact Azure, Twilio, and env-var steps are in `docs/crm-setup.md`. The Outlook refresh token is stored at `DATA_DIR/outlook-token.json` (mode 600) and is not in git.
+CRM email uses the same Resend or SMTP mail as quote alerts. The customer sees From `JF Hauling` at the verified from address, Reply-To `jfhauling@outlook.com`, and a BCC copy to that inbox (`CRM_EMAIL_BCC`). Inbound mail is pushed to `POST /api/leads/inbound-email`. Texts use Twilio. Optional AI drafts and auto-replies use `OPENAI_API_KEY`. Steps are in `docs/crm-setup.md`. Microsoft Graph is used only when `MS_CLIENT_ID` is set.
 
 ## 5. Putting it online (plain-language options)
 

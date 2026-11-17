@@ -5,6 +5,9 @@ const path = require('path');
 const config = require('../config');
 const leads = require('./leads');
 const outlook = require('./outlook');
+const mailer = require('./mailer');
+const crmMail = require('./crm-mail');
+const inboundEmail = require('./inbound-email');
 const twilio = require('./twilio');
 const ai = require('./ai-reply');
 const crmSettings = require('./crm-settings');
@@ -401,6 +404,8 @@ const ERRORS = {
   outlook: 'Connect Outlook in Settings before this can send.',
   'outlook-off': 'Outlook email is off until Microsoft sign-in is set up in Settings.',
   'outlook-send': 'Outlook could not send that email.',
+  'mail-off': 'Email is off until Resend or SMTP is set up.',
+  'mail-send': 'That email could not be sent.',
   twilio: 'Texting is off until Twilio is set up in Settings.',
   'twilio-off': 'Texting is off until Twilio is set up in Settings.',
   'twilio-send': 'That text could not be sent.',
@@ -462,9 +467,9 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     mail ? `<a class="btn btn-line" href="${esc(mail)}">Email</a>` : '',
   ].filter(Boolean).join('');
   const csrf = esc(req.crm.csrf);
-  const emailHint = !outlook.configured()
-    ? '<p class="hint">Outlook email is off until Microsoft sign-in is set up in Settings.</p>'
-    : outlook.connected() ? '' : '<p class="hint">Connect Outlook in Settings, then you can send from this lead.</p>';
+  const emailHint = config.microsoft.clientId
+    ? (outlook.connected() ? '' : '<p class="hint">Connect Outlook in Settings, then you can send from this lead.</p>')
+    : `<p class="hint">Email sends via JF Hauling mail, replies go to ${esc(config.business.email)}.</p>${mailer.mode() === 'off' ? '<p class="hint">Sending is off until RESEND_API_KEY or SMTP is set.</p>' : ''}`;
   const smsHint = twilio.configured() ? '' : '<p class="hint">Texting is off until Twilio is set up in Settings.</p>';
   const aiHint = ai.keySet() ? '' : '<p class="hint">Draft with AI is off until an OpenAI key is set.</p>';
   const main = `
@@ -546,8 +551,10 @@ function settingsPage(req, res) {
   const account = outlook.accountEmail();
   const globalOn = crmSettings.read().aiAutoReply !== false;
   let outlookBlock;
-  if (!outlook.configured()) {
-    outlookBlock = '<p class="banner bad">Outlook email is off. Set MS_CLIENT_ID, MS_CLIENT_SECRET, and MS_REDIRECT_URI on the server, then come back and connect.</p>';
+  if (!config.microsoft.clientId) {
+    outlookBlock = `<p class="banner">Email sends via JF Hauling mail, replies go to ${esc(config.business.email)}.</p>${mailer.mode() === 'off' ? '<p class="hint">Sending is off until RESEND_API_KEY or SMTP is set. Quote alerts use the same mail.</p>' : ''}`;
+  } else if (!outlook.configured()) {
+    outlookBlock = '<p class="banner bad">Outlook email is off. Set MS_CLIENT_SECRET and MS_REDIRECT_URI as well, or leave MS_CLIENT_ID blank to send with the website mail.</p>';
   } else if (connected) {
     outlookBlock = `<p class="banner">Outlook is connected${account ? ` as ${esc(account)}` : ''}.</p>
       <form method="post" action="/crm/inbox/check"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><button class="btn btn-dark" type="submit">Check inbox</button></form>
@@ -566,7 +573,7 @@ function settingsPage(req, res) {
     ${saved ? '<p class="banner" role="status">Saved.</p>' : ''}
     ${flash(req)}
     ${checked ? `<p class="banner" role="status">Inbox checked. ${esc(checked)} new message${checked === '1' ? '' : 's'} filed.</p>` : ''}
-    <section class="panel"><h2>Outlook</h2>${outlookBlock}</section>
+    <section class="panel"><h2>Email</h2>${outlookBlock}</section>
     <section class="panel"><h2>Texting</h2>${twilioBlock}</section>
     <section class="panel"><h2>AI auto-reply</h2>${aiBlock}</section>
     <p class="hint">Setup steps are in docs/crm-setup.md.</p>`;
@@ -688,20 +695,58 @@ function mount(app) {
   app.get('/crm/icon-512.png', (req, res) => sendIcon(res, 'icon-512.png'));
   app.get('/crm/apple-touch-icon.png', (req, res) => sendIcon(res, 'apple-touch-icon.png'));
 
-  app.post('/api/leads', (req, res) => {
-    privateHeaders(res);
-    if (!apiToken()) return res.status(503).json({ error: 'Lead API is not configured.' });
-    if (apiLimited(req.ip)) return res.status(429).json({ error: 'Too many requests. Try again in a minute.' });
+  function bearerOk(req) {
+    if (!apiToken()) return { ok: false, status: 503, error: 'Lead API is not configured.' };
+    if (apiLimited(req.ip)) return { ok: false, status: 429, error: 'Too many requests. Try again in a minute.' };
     const header = String(req.headers.authorization || '');
     const match = /^Bearer\s+(\S+)\s*$/i.exec(header);
-    if (!match || !shaEqual(match[1], apiToken())) return res.status(401).json({ error: 'Authentication required.' });
+    if (!match || !shaEqual(match[1], apiToken())) return { ok: false, status: 401, error: 'Authentication required.' };
+    return { ok: true };
+  }
+  function jsonObject(req, res) {
     if (!req.is('application/json') || !req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-      return res.status(400).json({ error: 'Send a JSON object.' });
+      res.status(400).json({ error: 'Send a JSON object.' });
+      return false;
     }
+    return true;
+  }
+
+  app.post('/api/leads', (req, res) => {
+    privateHeaders(res);
+    const auth = bearerOk(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!jsonObject(req, res)) return;
     const result = leads.create(fromApiBody(req.body), { defaultSource: 'email' });
     if (!result.ok) return res.status(result.status || 400).json({ error: result.error });
     if (!result.duplicate) console.log(`[leads] created id=${result.lead.id} source=${result.lead.source}`);
     res.status(result.status).json({ ok: true, duplicate: result.duplicate, lead: leads.publicLead(result.lead) });
+  });
+
+  app.post('/api/leads/inbound-email', async (req, res) => {
+    privateHeaders(res);
+    const auth = bearerOk(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    if (!jsonObject(req, res)) return;
+    try {
+      const result = await inboundEmail.receive(req.body);
+      if (!result.ok) return res.status(result.status || 400).json({ error: result.error });
+      res.status(result.status).json({
+        lead_id: result.lead_id,
+        created: result.created,
+        duplicate: result.duplicate,
+        auto_replied: result.auto_replied,
+      });
+    } catch (err) {
+      console.error('[leads] inbound email failed');
+      res.status(500).json({ error: 'Could not file that email.' });
+    }
+  });
+
+  app.get('/api/leads/known-emails', (req, res) => {
+    privateHeaders(res);
+    const auth = bearerOk(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    res.json({ emails: inboundEmail.knownEmails() });
   });
 
   app.post('/crm/login', (req, res) => {
@@ -808,9 +853,8 @@ function mount(app) {
     const back = (code) => res.redirect(303, `/crm/lead/${lead.id}?error=${code}`);
     if (!lead.email) return back('no-email');
     if (!body) return back('empty');
-    const sent = await outlook.sendEmail({ to: lead.email, subject: subject || 'JF Hauling', body, replyToId: outlook.graphMessageId(lead) });
-    if (!sent.ok) return back(sent.error || 'outlook-send');
-    leads.addTimeline(lead.id, { kind: 'email', direction: 'out', subject: subject || 'JF Hauling', body, ai: false });
+    const sent = await crmMail.sendLeadEmail({ lead, to: lead.email, subject: subject || 'JF Hauling', body, ai: false });
+    if (!sent.ok) return back(sent.error || 'mail-send');
     res.redirect(303, `/crm/lead/${lead.id}?sent=email`);
   });
   app.post('/crm/lead/:id/sms', requireSession, requireCsrf, async (req, res) => {

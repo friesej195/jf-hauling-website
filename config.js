@@ -135,6 +135,8 @@ module.exports = {
     notifyTo: env('NOTIFY_TO', OWNER_EMAIL),
     from: env('MAIL_FROM', ''),
     defaultFrom: 'JF Hauling Website <quotes@jfhauling.ca>',
+    // Copy of each CRM customer email. Default is the Outlook inbox. "-" turns the copy off.
+    crmBcc: env('CRM_EMAIL_BCC', OWNER_EMAIL),
   },
   resend: {
     apiKey: env('RESEND_API_KEY', ''),
