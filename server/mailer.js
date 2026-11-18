@@ -2,6 +2,7 @@
 // SMTP is the fallback when that key is blank and SMTP_HOST is set.
 // Does nothing in any other case. Never logs secrets or customer addresses.
 const config = require('../config');
+const guard = require('./address-guard');
 
 let transporter = null;
 
@@ -50,7 +51,7 @@ function addressOnly(from) {
 }
 
 function crmFrom() {
-  return `JF Hauling <${addressOnly(fromAddress())}>`;
+  return guard.customerFrom(fromAddress(), 'MAIL_FROM');
 }
 
 async function sendResend(message, fetchImpl = fetch) {
@@ -79,7 +80,13 @@ async function notify(subject, text, opts = {}) {
   const active = mode();
   if (active === 'off' || !config.mail.notifyTo) return false;
   const replyTo = opts.replyTo ? String(opts.replyTo).trim() : '';
-  const message = { from: fromAddress(), to: config.mail.notifyTo, replyTo, subject, text };
+  const message = {
+    from: guard.dispatchFrom(fromAddress(), 'MAIL_FROM'),
+    to: guard.dispatchTo(config.mail.notifyTo, 'NOTIFY_TO'),
+    replyTo,
+    subject,
+    text: guard.stripBlocked(text),
+  };
   try {
     if (active === 'resend') {
       await sendResend(message);
@@ -105,13 +112,15 @@ async function notify(subject, text, opts = {}) {
 async function sendCustomer({ to, subject, text, messageId, inReplyTo, references, reference, fetchImpl } = {}) {
   const active = mode();
   if (active === 'off') return { ok: false, error: 'off' };
-  const replyTo = config.business.email;
-  const bcc = config.mail.crmBcc && config.mail.crmBcc !== '-' && config.mail.crmBcc !== 'off' ? config.mail.crmBcc : '';
-  const headers = {};
-  if (messageId) headers['Message-ID'] = messageId;
-  if (inReplyTo) headers['In-Reply-To'] = inReplyTo;
-  if (references && references.length) headers.References = references.join(' ');
-  const message = { from: crmFrom(), to, replyTo, bcc, subject, text, headers };
+  const replyTo = guard.customerReplyTo(config.business.email, 'EMAIL');
+  const bcc = guard.customerBcc(config.mail.crmBcc, 'CRM_EMAIL_BCC');
+  const headers = guard.cleanHeaders({
+    ...(messageId ? { 'Message-ID': messageId } : {}),
+    ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
+    ...(references && references.length ? { References: references.join(' ') } : {}),
+  });
+  const safeText = guard.stripBlocked(text);
+  const message = { from: crmFrom(), to, replyTo, bcc, subject: guard.stripBlocked(subject), text: safeText, headers };
   try {
     if (active === 'resend') {
       await sendResend(message, fetchImpl);
@@ -123,8 +132,8 @@ async function sendCustomer({ to, subject, text, messageId, inReplyTo, reference
         to,
         bcc: bcc || undefined,
         replyTo: replyTo || undefined,
-        subject,
-        text,
+        subject: message.subject,
+        text: message.text,
         messageId: messageId || undefined,
         inReplyTo: inReplyTo || undefined,
         references: references && references.length ? references : undefined,

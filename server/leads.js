@@ -123,6 +123,7 @@ function create(raw, opts = {}) {
     timeline: [],
     aiAutoReply: false,
     needsJohan: false,
+    openedAt: '',
     followUpDate: v.followUpDate,
     externalId: v.externalId,
     quoteId: opts.quoteId ? clip(opts.quoteId, 40) : '',
@@ -337,7 +338,115 @@ function haystack(lead) {
   ].join(' ').toLowerCase();
 }
 
-function query({ status = '', source = '', q = '', dueOnly = false } = {}) {
+function hasOutbound(lead) {
+  return (lead.timeline || []).some((item) => (item.kind === 'email' || item.kind === 'sms') && item.direction === 'out');
+}
+
+function folderOf(lead) {
+  if (hasOutbound(lead)) return 'replied';
+  if (lead && lead.openedAt) return 'opened';
+  return 'new';
+}
+
+function folderCounts() {
+  const counts = { new: 0, opened: 0, replied: 0 };
+  for (const lead of all()) counts[folderOf(lead)] += 1;
+  return counts;
+}
+
+function markOpened(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  if (lead.openedAt) return lead;
+  return store.update('leads', id, { openedAt: new Date().toISOString() });
+}
+
+function replyChannel(lead, requested) {
+  const canEmail = !!(lead && String(lead.email || '').trim());
+  const canText = !!(lead && String(lead.phone || '').trim());
+  let channel = requested === 'sms' || requested === 'text' ? 'sms' : requested === 'email' ? 'email' : '';
+  if (!channel) channel = canEmail ? 'email' : 'sms';
+  if (channel === 'email' && !canEmail) channel = canText ? 'sms' : '';
+  if (channel === 'sms' && !canText) channel = canEmail ? 'email' : '';
+  return { channel, canEmail, canText };
+}
+
+function customerEvents(lead) {
+  const events = [];
+  if (lead && lead.createdAt) {
+    events.push({
+      at: lead.createdAt,
+      channel: lead.source === 'website' ? 'quote' : 'lead',
+      preview: lead.message || '',
+    });
+  }
+  for (const item of (lead && lead.timeline) || []) {
+    if ((item.kind === 'email' || item.kind === 'sms') && item.direction === 'in' && item.at) {
+      events.push({ at: item.at, channel: item.kind === 'sms' ? 'sms' : 'email', preview: item.body || item.subject || '' });
+    }
+  }
+  return events.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+function latestOutboundAt(lead) {
+  let latest = '';
+  for (const item of (lead && lead.timeline) || []) {
+    if ((item.kind === 'email' || item.kind === 'sms') && item.direction === 'out' && String(item.at) > latest) latest = item.at;
+  }
+  return latest;
+}
+
+function awaitingReply(lead) {
+  if (!lead || lead.status === 'Lost' || lead.status === 'Booked') return null;
+  const events = customerEvents(lead);
+  if (!events.length) return null;
+  const last = events[events.length - 1];
+  const outbound = latestOutboundAt(lead);
+  if (outbound && outbound >= last.at) return null;
+  return last;
+}
+
+function needsReply({ minutes = 30, since = '', now = new Date() } = {}) {
+  const stamp = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  const nowMs = new Date(stamp).getTime();
+  const leadsOut = [];
+  for (const lead of all()) {
+    const waiting = awaitingReply(lead);
+    if (!waiting) continue;
+    const waitMs = nowMs - new Date(waiting.at).getTime();
+    if (!Number.isFinite(waitMs)) continue;
+    if (since) {
+      if (String(waiting.at) < String(since)) continue;
+    } else if (waitMs < minutes * 60 * 1000) continue;
+    const base = String(configSite()).replace(/\/$/, '');
+    leadsOut.push({
+      id: lead.id,
+      name: lead.name || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      source: lead.source || '',
+      folder: folderOf(lead),
+      waitingSince: new Date(waiting.at).toISOString(),
+      waitingMinutes: Math.floor(waitMs / 60000),
+      lastInboundChannel: waiting.channel,
+      lastInboundPreview: String(waiting.preview || '').replace(/\s+/g, ' ').trim().slice(0, 140),
+      crmUrl: `${base}/crm/lead/${encodeURIComponent(lead.id)}`,
+    });
+  }
+  leadsOut.sort((a, b) => String(a.waitingSince).localeCompare(String(b.waitingSince)));
+  return { now: stamp, leads: leadsOut };
+}
+
+function configSite() {
+  try {
+    const config = require('../config');
+    return config.server.siteUrl || 'https://jfhauling.ca';
+  } catch {
+    return 'https://jfhauling.ca';
+  }
+}
+
+function query({ status = '', source = '', q = '', dueOnly = false, folder = '' } = {}) {
   const today = todayToronto();
   let rows = all().slice();
   if (dueOnly) {
@@ -348,6 +457,7 @@ function query({ status = '', source = '', q = '', dueOnly = false } = {}) {
   }
   if (status && STATUSES.includes(status)) rows = rows.filter((r) => r.status === status);
   if (source && SOURCES.includes(source)) rows = rows.filter((r) => r.source === source);
+  if (folder === 'new' || folder === 'opened' || folder === 'replied') rows = rows.filter((r) => folderOf(r) === folder);
   const needle = String(q || '').trim().toLowerCase();
   if (needle) rows = rows.filter((r) => haystack(r).includes(needle));
   return { rows, today };
@@ -414,4 +524,5 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply,
 };
