@@ -83,7 +83,7 @@ function systemPrompt(lead) {
     'Use the lead details when they help. Never promise a firm price, a pickup date, or availability beyond the website estimate.',
     'Say Johan or the dispatcher will confirm the final price and timing.',
     'Shed mule pricing: check with the dispatcher.',
-    "Sign off as 'JF Hauling'.",
+    'Do not add a sign-off, a name, or a signature. One is added after your reply.',
     'Reply with only the message to send. No subject line and no markdown.',
   ];
   const detail = [

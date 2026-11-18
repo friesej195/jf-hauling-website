@@ -14,6 +14,7 @@ const leads = require('../server/leads');
 const inbound = require('../server/inbound-email');
 const thread = require('../server/thread');
 const store = require('../server/store');
+const settings = require('../server/crm-settings');
 
 let failed = 0;
 function check(name, cond, detail) {
@@ -60,6 +61,9 @@ function check(name, cond, detail) {
   const origins = (second.timeline || []).filter((item) => item.externalId === `origin:${open.lead.id}`);
   check('the original quote is added once', origins.length === 1 && origins[0].body.includes('Listowel') && origins[0].subject === 'Quote request' && (first.timeline || []).filter((item) => item.externalId === `origin:${open.lead.id}`).length === 1);
   check('the thread is chronological and the list snippet is the latest reply', leads.threadItems(second)[0].externalId === `origin:${open.lead.id}` && leads.lastSnippet(second).includes('Thursday still works.') && leads.matchLead({ leadId: other.lead.id, email: 'jane@example.ca' }).id === other.lead.id);
+  settings.write({ emailText: 'Custom Signoff Line From Johan' });
+  const custom = thread.stripQuoted('See you then.\n\nCustom Signoff Line From Johan\nmore quoted mail');
+  check('an edited email signature is stripped from the displayed reply', custom.clean === 'See you then.' && custom.full.includes('Custom Signoff'));
 
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
   process.exit(failed ? 1 : 0);

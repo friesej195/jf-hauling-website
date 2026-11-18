@@ -34,7 +34,8 @@ async function sendSms({ to, body, fetchImpl = fetch }) {
   const from = phone.toE164(config.twilio.fromNumber);
   if (!dest || !from) return { ok: false, error: 'no-phone' };
   const guard = require('./address-guard');
-  const payload = new URLSearchParams({ To: dest, From: from, Body: guard.stripBlocked(body).slice(0, 1000) });
+  const signed = require('./signature').composeSms(guard.stripBlocked(body));
+  const payload = new URLSearchParams({ To: dest, From: from, Body: signed });
   const res = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(config.twilio.accountSid)}/Messages.json`, {
     method: 'POST',
     headers: {

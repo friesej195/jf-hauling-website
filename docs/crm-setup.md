@@ -129,6 +129,8 @@ Opening a lead records that visit. Sending moves it to Replied. The status list 
 
 On a lead, the conversation is one thread: the customer on the left, JF Hauling on the right, with the time and an Email or Text label. It includes the original quote, every email and text sent from the CRM, and every customer reply from Resend, the Outlook check, or a text. A reply is matched to the lead on the plus address first, then the email address, then the phone, preferring a lead that is still open. The same Message-ID or text id is stored once. Quoted history and the signature are tucked behind **Show full message**. The thread refreshes while the lead is open. The list shows the last line and a yellow dot when a new customer reply is waiting. Notes and close or reopen events sit in the middle in grey.
 
+Every CRM email and text, including an AI reply, gets Johan’s signature. The composer shows it in grey under the message. Email is the Outlook signature (logo, name, phone, and site) plus a plain-text version. A text ends with `- Johan, JF Hauling 226-545-1745 jfhauling.ca`. A trailing “JF Hauling” or “Best, Johan” is removed first so it is not added twice. Edit both signatures in **Settings**. They are stored on the data disk.
+
 ## Receiving replies on reply.jfhauling.ca
 
 Leave the MX records on `jfhauling.ca` alone. Namecheap email forwarding for the root domain stays as it is. Receiving uses the subdomain `reply.jfhauling.ca` only. Until `CRM_REPLY_TO_INBOUND` is set, customer mail still uses Reply-To `jfhauling@outlook.com` and nothing else changes.

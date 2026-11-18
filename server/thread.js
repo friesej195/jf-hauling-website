@@ -1,4 +1,16 @@
 // Turns a raw customer email into the new text, and keeps the original for "show full".
+function savedSignature() {
+  try {
+    const current = require('./signature').current();
+    return {
+      emailText: String(current.emailText || '').trim(),
+      sms: String(current.sms || '').trim(),
+    };
+  } catch {
+    return { emailText: '', sms: '' };
+  }
+}
+
 function stripQuoted(raw) {
   const full = String(raw || '').replace(/\r\n/g, '\n').trim();
   if (!full) return { clean: '', full: '' };
@@ -14,6 +26,12 @@ function stripQuoted(raw) {
   for (const re of markers) {
     const match = full.match(re);
     if (match && match.index < cut) cut = match.index;
+  }
+  const saved = savedSignature();
+  for (const block of [saved.emailText, saved.sms]) {
+    if (block.length < 8) continue;
+    const at = full.indexOf(block);
+    if (at > 0 && at < cut) cut = at;
   }
   let head = full.slice(0, cut);
   const lines = head.split('\n');

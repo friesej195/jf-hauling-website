@@ -20,6 +20,7 @@
     "test:badge": "node tests/crm-badge.js",
     "test:resend": "node tests/crm-resend-inbound.js",
     "test:thread": "node tests/crm-thread.js",
+    "test:signature": "node tests/crm-signature.js",
     "test:reviews": "node tests/reviews.js"
   },
   "keywords": [],
