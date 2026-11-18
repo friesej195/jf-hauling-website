@@ -39,8 +39,7 @@ async function receive(raw, { fetchImpl } = {}) {
     return { ok: true, status: 200, lead_id: duplicate.id, created: false, duplicate: true, auto_replied: false };
   }
 
-  let lead = body.lead_id ? leads.findLoose(body.lead_id) : null;
-  if (!lead) lead = leads.findByEmail(fromEmail);
+  let lead = leads.matchLead({ leadId: body.lead_id, email: fromEmail, phone: body.from_phone || body.phone });
   let created = false;
   if (!lead) {
     const made = leads.create({
@@ -67,13 +66,15 @@ async function receive(raw, { fetchImpl } = {}) {
     externalId,
     messageId: internetId,
     at,
+    attachments: body.attachments,
   });
   if (!filed.ok) return { ok: false, status: filed.status || 400, error: filed.error };
   leads.touchContact(lead.id, at);
   let closed = false;
   if (!filed.duplicate) {
     const intent = require('./intent');
-    const decision = await intent.applyCustomerIntent(lead.id, [subject, bodyText].filter(Boolean).join('\n'), fetchImpl);
+    const clean = require('./thread').stripQuoted(bodyText).clean;
+    const decision = await intent.applyCustomerIntent(lead.id, [subject, clean].filter(Boolean).join('\n'), fetchImpl);
     closed = !!decision.closed;
     if (!closed && !decision.reopened) {
       const push = require('./push');

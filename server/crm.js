@@ -184,6 +184,19 @@ details{margin-top:8px}
 summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:pointer}
 .count{color:var(--muted);font-size:.88rem;margin:0 0 8px}
 .back{color:#fff}
+.thread{display:flex;flex-direction:column;gap:8px;max-height:min(62vh,640px);overflow-y:auto;padding:2px 0 8px}
+.bubble{max-width:min(85%,520px);padding:10px 12px;border-radius:16px;background:#fff;border:1px solid #ececea}
+.bubble.in{align-self:flex-start;border-bottom-left-radius:5px}
+.bubble.out{align-self:flex-end;background:#2A2D32;color:#fff;border:0;border-bottom-right-radius:5px}
+.bubble .who{font-size:.72rem;font-weight:800;letter-spacing:.3px}
+.bubble.out .who,.bubble.out .meta{color:#f3f3f2}
+.bubble .msg{white-space:pre-wrap;margin:4px 0 0}
+.bubble details summary{min-height:32px;font-size:.82rem;color:inherit}
+.files{margin:6px 0 0;padding-left:18px;font-size:.82rem}
+.sys{align-self:center;max-width:92%;color:#5d6168;font-size:.78rem;text-align:center;padding:2px 8px}
+.reply-dock{margin-top:8px}
+.snippet{color:#5d6168;font-size:.86rem;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unread-dot{width:10px;height:10px;border-radius:50%;background:#F6B913;display:inline-block;flex:0 0 auto;margin-top:6px}
 .tl{border-top:1px solid var(--line);padding:10px 0}
 .tl:first-child{border-top:0}
 .who{font-size:.72rem;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
@@ -446,9 +459,10 @@ function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
   }
   const article = `<article class="card">
     <a class="card-main" href="/crm/lead/${esc(lead.id)}">
-      <div class="card-top"><strong>${esc(name)}</strong><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span></div>
+      <div class="card-top"><strong>${esc(name)}</strong><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span>${lead.unread ? '<span class="unread-dot" aria-label="New reply"></span>' : ''}</div>
       ${route ? `<div class="route">${esc(route)}</div>` : ''}
       <div class="meta">${esc(SOURCE_LABEL[lead.source] || lead.source)}${bits ? ` · ${esc(bits)}` : ''}</div>
+      ${leads.lastSnippet(lead) ? `<div class="snippet">${esc(leads.lastSnippet(lead))}</div>` : ''}
       ${lead.needsJohan ? '<div class="dueflag overdue">Needs Johan</div>' : ''}
       ${due}
     </a>
@@ -464,6 +478,7 @@ function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
 function listPage(req, res, { dueOnly }) {
   const folder = ['new', 'opened', 'replied', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
   const q = { status: String(req.query.status || ''), source: String(req.query.source || ''), q: String(req.query.q || ''), folder: dueOnly ? '' : folder };
+  leads.ensureAllThreads();
   const { rows, today } = leads.query({ ...q, dueOnly, folder: q.folder });
   const title = dueOnly ? 'Follow-ups' : (folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
   const narrowed = q.status || q.source || q.q;
@@ -552,13 +567,30 @@ function emailSubject(lead) {
   return `JF Hauling${lead.loadType ? ` — ${lead.loadType}` : ''}`.slice(0, 200);
 }
 
-function timelineHtml(lead) {
-  const items = leads.conversation(lead);
+function isSystem(item) {
+  if (!item || item.kind === 'email' || item.kind === 'sms') return false;
+  if (item.system) return true;
+  return /^(Closed|Reopened|Status changed|Follow-up|Quoted price|Name updated|Phone updated|Email updated|Pickup updated|Drop-off updated|Load updated|Shed size updated|Source updated)/.test(String(item.body || ''));
+}
+
+function threadInner(lead) {
+  const items = leads.threadItems(lead);
   if (!items.length) return '<p class="hint">Notes, emails, and texts will show up here.</p>';
   return items.map((item) => {
-    const label = item.kind === 'email' ? (item.direction === 'in' ? 'Email in' : 'Email out') : item.kind === 'sms' ? (item.direction === 'in' ? 'Text in' : 'Text out') : 'Note';
-    return `<article class="tl"><div class="who ${esc(item.direction || '')}">${esc(label)}${item.ai ? ' · AI' : ''}</div><time datetime="${esc(item.at)}">${esc(fmtWhen(item.at))}</time>${item.subject ? `<div class="meta">${esc(item.subject)}</div>` : ''}<div class="msg">${esc(item.body || '')}</div></article>`;
+    if (isSystem(item)) return `<p class="sys">${esc(item.body || 'Note')} · ${esc(fmtWhen(item.at))}</p>`;
+    const side = item.direction === 'out' ? 'out' : 'in';
+    const channel = item.kind === 'sms' ? 'Text' : 'Email';
+    const who = side === 'out' ? (item.ai ? 'JF Hauling · AI' : 'JF Hauling') : 'Customer';
+    const files = (item.attachments || []).map((file) => `<li>${esc(file.filename || 'Attachment')}</li>`).join('');
+    const full = item.bodyFull && item.bodyFull !== item.body
+      ? `<details><summary>Show full message</summary><div class="msg">${esc(item.bodyFull)}</div></details>`
+      : '';
+    return `<article class="bubble ${side}"><div class="who">${esc(who)} · ${esc(channel)}</div><time class="meta" datetime="${esc(item.at)}">${esc(fmtWhen(item.at))}</time>${item.subject ? `<div class="meta">${esc(item.subject)}</div>` : ''}<div class="msg">${esc(item.body || '')}</div>${files ? `<ul class="files">${files}</ul>` : ''}${full}</article>`;
   }).join('');
+}
+
+function threadBlock(lead) {
+  return `<div class="thread" id="thread" data-stamp="${esc(leads.threadStamp(lead))}" data-url="/crm/lead/${esc(lead.id)}/thread" aria-live="polite">${threadInner(lead)}</div>`;
 }
 
 const SWIPE_JS = `<script>
@@ -631,6 +663,28 @@ const PUSH_JS = `<script>
 })();
 </script>`;
 
+const THREAD_JS = `<script>
+(function(){
+  var box=document.getElementById('thread');
+  if(!box) return;
+  box.scrollTop=box.scrollHeight;
+  window.scrollTo(0, document.body.scrollHeight);
+  var stamp=box.getAttribute('data-stamp')||'';
+  async function tick(){
+    if(document.hidden) return;
+    var res=await fetch(box.getAttribute('data-url')+'?stamp='+encodeURIComponent(stamp),{headers:{Accept:'application/json'}});
+    if(!res.ok) return;
+    var data=await res.json();
+    if(!data.stamp || data.stamp===stamp || !data.html) return;
+    var near=box.scrollHeight-box.scrollTop-box.clientHeight<90;
+    box.innerHTML=data.html;
+    stamp=data.stamp;
+    box.setAttribute('data-stamp',stamp);
+    if(near) box.scrollTop=box.scrollHeight;
+  }
+  setInterval(function(){tick().catch(function(){});},8000);
+})();
+</script>`;
 const DRAFT_JS = `<script>
 document.querySelectorAll('[data-draft]').forEach(function(btn){
   btn.addEventListener('click', function(){
@@ -694,8 +748,9 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
     ${actions ? `<div class="actions">${actions}</div>` : ''}
-    ${replyForm(lead, csrf, emailHint, smsHint, aiHint)}
-    <section class="panel"><h2>Conversation</h2>${timelineHtml(lead)}</section>
+    <h2>Conversation</h2>
+    ${threadBlock(lead)}
+    <div class="reply-dock">${replyForm(lead, csrf, emailHint, smsHint, aiHint)}</div>
     <details class="panel"><summary>More</summary>
     <form method="post" action="/crm/lead/${esc(lead.id)}/ai">
       <input type="hidden" name="_csrf" value="${csrf}">
@@ -732,7 +787,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     </details>
     <section class="panel"><h2>Original message</h2><p class="msg">${esc(lead.message || '—')}</p>${lead.externalId ? `<p class="meta">Reference ${esc(lead.externalId)}</p>` : ''}</section>
     ${(lead.status === 'Closed' || lead.status === 'Lost') ? '' : closeSheet(lead, csrf)}
-    ${DRAFT_JS}`;
+    ${DRAFT_JS}${THREAD_JS}`;
   sendHtml(req, res, status, shell(req, req.crm, { title: name, main, active: 'all', back: '/crm/' }));
 }
 
@@ -748,7 +803,7 @@ function replyForm(lead, csrf, emailHint, smsHint, aiHint) {
     </div>
     <p class="meta email-only">To ${esc(lead.email || '—')}</p>
     <p class="meta text-only">To ${esc(phoneDisplay(lead.phone) || '—')}</p>
-    ${emailHint}${smsHint}${aiHint}
+    ${(emailHint || smsHint || aiHint) ? `<details><summary>Sending</summary>${emailHint}${smsHint}${aiHint}</details>` : ''}
     <div class="email-only"><label>Subject<input name="subject" maxlength="200" value="${esc(emailSubject(lead))}"></label></div>
     <label>Message<textarea id="reply-body" name="body" maxlength="4000"></textarea></label>
     <div class="sig-preview email-only">${signature.cleanSignatureHtml(signature.current().emailHtml)}</div>
@@ -1126,8 +1181,16 @@ function mount(app) {
     console.log(`[leads] created id=${result.lead.id} source=${result.lead.source}`);
     res.redirect(303, `/crm/lead/${result.lead.id}?saved=1`);
   });
+  app.get('/crm/lead/:id/thread', requireSession, (req, res) => {
+    privateHeaders(res);
+    const lead = leads.ensureThread(req.params.id);
+    if (!lead) return res.status(404).json({ error: 'That lead is not on file.' });
+    const stamp = leads.threadStamp(lead);
+    if (String(req.query.stamp || '') === stamp) return res.json({ stamp });
+    res.json({ stamp, html: threadInner(lead) });
+  });
   app.get('/crm/lead/:id', requireSession, (req, res) => {
-    const found = leads.find(req.params.id);
+    const found = leads.ensureThread(req.params.id);
     if (!found) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
     const lead = leads.markOpened(found.id) || found;
     detailPage(req, res, lead, { saved: req.query.saved === '1' });

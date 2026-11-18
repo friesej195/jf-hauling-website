@@ -278,6 +278,7 @@ app.get('/admin/quotes.csv', adminAuth, (req, res) => {
 });
 
 crm.mount(app);
+try { leads.ensureAllThreads(); } catch { /* a missing data dir is created on the first write */ }
 
 app.use((req, res) => res.status(404).type('html').send(render(path.join(PUB, '404.html'))));
 
