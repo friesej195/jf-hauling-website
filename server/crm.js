@@ -12,6 +12,7 @@ const push = require('./push');
 const twilio = require('./twilio');
 const ai = require('./ai-reply');
 const crmSettings = require('./crm-settings');
+const signature = require('./signature');
 
 const COOKIE = 'jf_crm';
 const TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -108,7 +109,7 @@ function privateHeaders(res) {
     'X-Robots-Tag': 'noindex, nofollow',
     'Cache-Control': 'no-store',
     'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' https://jfhauling.ca; form-action 'self'; base-uri 'self'; frame-ancestors 'none'",
   });
 }
 
@@ -234,6 +235,8 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .toast p{margin:0;flex:1;font-weight:800}
 .toast form{margin:0}
 .toast button{background:#F6B913;color:#2A2D32;border:0;border-radius:10px;font-weight:800;min-height:40px;padding:0 14px;cursor:pointer}
+.sig-preview{margin:4px 0 12px;opacity:.55;pointer-events:none}
+.sig-preview img{width:80px;height:auto}
 `;
 
 function page({ title, body, authed, active, dueCount, csrf, back, attention = 0 }) {
@@ -748,6 +751,8 @@ function replyForm(lead, csrf, emailHint, smsHint, aiHint) {
     ${emailHint}${smsHint}${aiHint}
     <div class="email-only"><label>Subject<input name="subject" maxlength="200" value="${esc(emailSubject(lead))}"></label></div>
     <label>Message<textarea id="reply-body" name="body" maxlength="4000"></textarea></label>
+    <div class="sig-preview email-only">${signature.cleanSignatureHtml(signature.current().emailHtml)}</div>
+    <p class="sig-preview text-only">${esc(signature.current().sms.trim())}</p>
     <p class="draft-status" id="reply-draft-status" role="status"></p>
     <button class="btn btn-line" type="button" data-draft="email" data-url="/crm/lead/${esc(lead.id)}/draft">Draft with AI</button>
     <button class="btn btn-yellow" type="submit">Send</button>
@@ -796,6 +801,16 @@ function settingsPage(req, res) {
     </section>
     <section class="panel"><h2>Email</h2>${outlookBlock}</section>
     <section class="panel"><h2>Texting</h2>${twilioBlock}</section>
+    <section class="panel"><h2>Signature</h2>
+      <form method="post" action="/crm/settings">
+        <input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}">
+        <input type="hidden" name="form" value="signature">
+        <label>Email signature<textarea name="emailHtml" maxlength="8000">${esc(crmSettings.read().emailHtml)}</textarea></label>
+        <label>Plain-text email signature<textarea name="emailText" maxlength="1000">${esc(crmSettings.read().emailText)}</textarea></label>
+        <label>Text signature<textarea name="sms" maxlength="300">${esc(crmSettings.read().sms)}</textarea></label>
+        <button class="btn btn-dark" type="submit">Save signature</button>
+      </form>
+    </section>
     <section class="panel"><h2>AI auto-reply</h2>${aiBlock}</section>
     <p class="hint">Setup steps are in docs/crm-setup.md.</p>${PUSH_JS}`;
   sendHtml(req, res, 200, shell(req, req.crm, { title: 'Settings', main, active: '', back: '/crm/' }));
@@ -1131,7 +1146,15 @@ function mount(app) {
   });
   app.get('/crm/settings', requireSession, (req, res) => settingsPage(req, res));
   app.post('/crm/settings', requireSession, requireCsrf, (req, res) => {
-    crmSettings.write({ aiAutoReply: req.body && req.body.aiAutoReply === '1' });
+    if (req.body && req.body.form === 'signature') {
+      crmSettings.write({
+        emailHtml: String(req.body.emailHtml || '').slice(0, 8000),
+        emailText: String(req.body.emailText || '').slice(0, 1000),
+        sms: String(req.body.sms || '').slice(0, 300),
+      });
+    } else {
+      crmSettings.write({ aiAutoReply: req.body && req.body.aiAutoReply === '1' });
+    }
     res.redirect(303, '/crm/settings?saved=1');
   });
   app.get('/crm/oauth/start', requireSession, (req, res) => {

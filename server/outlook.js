@@ -147,7 +147,7 @@ function graphMessageId(lead) {
   return id;
 }
 
-async function deliverEmail({ accessToken, to, subject, body, replyToId, fetchImpl }) {
+async function deliverEmail({ accessToken, to, subject, body, html, replyToId, fetchImpl }) {
   const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
   if (replyToId) {
     const replyUrl = `${GRAPH}/me/messages/${encodeURIComponent(replyToId)}/reply`;
@@ -165,7 +165,7 @@ async function deliverEmail({ accessToken, to, subject, body, replyToId, fetchIm
   const payload = {
     message: {
       subject: subject || 'JF Hauling',
-      body: { contentType: 'Text', content: body },
+      body: html ? { contentType: 'HTML', content: html } : { contentType: 'Text', content: body },
       toRecipients: [{ emailAddress: { address: to } }],
     },
     saveToSentItems: true,
@@ -188,7 +188,8 @@ async function sendEmail({ to, subject, body, replyToId, fetchImpl = fetch }) {
   let accessToken;
   try { accessToken = await getAccessToken(fetchImpl); }
   catch { return { ok: false, error: 'outlook' }; }
-  return deliverEmail({ accessToken, to, subject, body, replyToId, fetchImpl });
+  const signed = require('./signature').composeEmail(body);
+  return deliverEmail({ accessToken, to, subject, body: signed.text, html: signed.html, replyToId, fetchImpl });
 }
 
 function isBulkAddress(email) {
