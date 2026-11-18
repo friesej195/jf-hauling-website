@@ -61,6 +61,8 @@ function check(name, cond, detail) {
   const origins = (second.timeline || []).filter((item) => item.externalId === `origin:${open.lead.id}`);
   check('the original quote is added once', origins.length === 1 && origins[0].body.includes('Listowel') && origins[0].subject === 'Quote request' && (first.timeline || []).filter((item) => item.externalId === `origin:${open.lead.id}`).length === 1);
   check('the thread is chronological and the list snippet is the latest reply', leads.threadItems(second)[0].externalId === `origin:${open.lead.id}` && leads.lastSnippet(second).includes('Thursday still works.') && leads.matchLead({ leadId: other.lead.id, email: 'jane@example.ca' }).id === other.lead.id);
+  const oldJohn = thread.stripQuoted('See you Thursday.\n\n- John, JF Hauling 226-545-1745 jfhauling.ca');
+  check('a John Friesen sign-off is stripped as well as Johan', thread.stripQuoted('Thanks.\n\nJohn Friesen\nJF Hauling · Pickup & Gooseneck Flat Deck Hauling').clean === 'Thanks.' && oldJohn.clean === 'See you Thursday.');
   settings.write({ emailText: 'Custom Signoff Line From Johan' });
   const custom = thread.stripQuoted('See you then.\n\nCustom Signoff Line From Johan\nmore quoted mail');
   check('an edited email signature is stripped from the displayed reply', custom.clean === 'See you then.' && custom.full.includes('Custom Signoff'));

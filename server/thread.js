@@ -20,7 +20,9 @@ function stripQuoted(raw) {
     /\n_{5,}\n/,
     /\nFrom:\s[^\n]+\nSent:\s/i,
     /\nJohan Friesen\nJF Hauling/i,
+    /\nJohn Friesen\nJF Hauling/i,
     /\n- Johan, JF Hauling\b/,
+    /\n- John, JF Hauling\b/,
   ];
   let cut = full.length;
   for (const re of markers) {
