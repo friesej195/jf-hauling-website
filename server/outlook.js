@@ -216,7 +216,7 @@ async function pullInbox(fetchImpl = fetch) {
   let accessToken;
   try { accessToken = await getAccessToken(fetchImpl); }
   catch { return { ok: false, reason: 'auth', created: 0, logged: 0 }; }
-  const url = `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$orderby=receivedDateTime desc&$select=id,subject,from,bodyPreview,receivedDateTime,isDraft`;
+  const url = `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$orderby=receivedDateTime desc&$select=id,subject,from,bodyPreview,receivedDateTime,isDraft,internetMessageId`;
   const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) {
     console.error(`[outlook] inbox failed status=${res.status}`);
@@ -229,7 +229,9 @@ async function pullInbox(fetchImpl = fetch) {
   const own = ownAddress();
   for (const msg of messages) {
     if (!msg || msg.isDraft || !msg.id) continue;
+    const internetId = String(msg.internetMessageId || '').trim();
     if (leads.findByExternalId(msg.id)) continue;
+    if (internetId && leads.findByMessageId(internetId)) continue;
     const from = msg.from && msg.from.emailAddress ? msg.from.emailAddress : {};
     const email = String(from.address || '').toLowerCase();
     const name = String(from.name || '').trim();
@@ -260,6 +262,7 @@ async function pullInbox(fetchImpl = fetch) {
       subject,
       body: preview,
       externalId: msg.id,
+      messageId: internetId,
       at: msg.receivedDateTime || new Date().toISOString(),
     });
     if (added && added.duplicate) continue;

@@ -34,12 +34,13 @@ async function receive(raw, { fetchImpl } = {}) {
   const at = when(body.received_at);
   if (body.received_at && at == null) return { ok: false, status: 400, error: 'received_at must be a date.' };
 
-  const duplicate = leads.findByExternalId(externalId);
+  const duplicate = leads.findByExternalId(externalId) || (internetId ? leads.findByMessageId(internetId) : null);
   if (duplicate) {
     return { ok: true, status: 200, lead_id: duplicate.id, created: false, duplicate: true, auto_replied: false };
   }
 
-  let lead = leads.findByEmail(fromEmail);
+  let lead = body.lead_id ? leads.findLoose(body.lead_id) : null;
+  if (!lead) lead = leads.findByEmail(fromEmail);
   let created = false;
   if (!lead) {
     const made = leads.create({

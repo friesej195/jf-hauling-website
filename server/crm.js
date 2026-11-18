@@ -204,9 +204,39 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .seg label.off{opacity:.45}
 #reply-form:has(input[value="sms"]:checked) .email-only{display:none}
 #reply-form:has(input[value="email"]:checked) .text-only{display:none}
+.close-cta{margin:0 0 12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.chips label{display:flex;align-items:center;min-height:44px;padding:8px 12px;border:1.5px solid #d5d6d8;border-radius:999px;background:#fff;color:var(--ink);font-weight:800;font-size:.92rem}
+.chips input{position:absolute;opacity:0;width:1px;height:1px}
+.chips label:has(input:checked){background:#2A2D32;color:#fff;border-color:#2A2D32}
+.other-text{display:none}
+.chips:has(input[value="Other"]:checked) ~ .other-text{display:grid}
+.sheet{display:none}
+.sheet:target{display:block}
+.sheet-backdrop{position:fixed;inset:0;background:rgba(42,45,50,.45);z-index:7}
+.sheet-card{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto;box-shadow:0 -8px 30px rgba(42,45,50,.2)}
+.sheet-card h2{font-size:1.15rem}
+.swipe{position:relative;margin:0 0 10px}
+.swipe-close{position:absolute;top:0;right:0;bottom:0;width:96px;margin:0}
+.swipe-close button{height:100%;width:100%;border:0;border-radius:14px;background:#9b2c2c;color:#fff;font-weight:800}
+.swipe .card{position:relative;z-index:1;margin:0;transition:transform .18s ease}
+.swipe.is-open .card{transform:translateX(-96px)}
+.card-tools{display:flex;flex-direction:column;background:#fff}
+.card-tools .call{flex:1}
+.rowmenu{position:relative}
+.rowmenu summary{list-style:none;min-width:44px;min-height:40px;display:flex;align-items:center;justify-content:center;font-size:1.35rem;font-weight:800;cursor:pointer;line-height:1}
+.rowmenu summary::-webkit-details-marker{display:none}
+.rowmenu-pop{position:absolute;right:0;top:100%;z-index:4;background:#fff;border:1px solid #e4e5e7;border-radius:12px;box-shadow:0 8px 24px rgba(42,45,50,.16);min-width:168px;padding:6px}
+.rowmenu-pop button{width:100%;min-height:44px;border:0;background:transparent;font-weight:800;color:#9b2c2c;text-align:left;padding:0 12px;border-radius:8px;cursor:pointer}
+.card:has(.rowmenu[open]){overflow:visible;z-index:4}
+.swipe:has(.rowmenu[open]){z-index:4}
+.toast{position:fixed;left:14px;right:14px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:9;background:#2A2D32;color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(42,45,50,.25)}
+.toast p{margin:0;flex:1;font-weight:800}
+.toast form{margin:0}
+.toast button{background:#F6B913;color:#2A2D32;border:0;border-radius:10px;font-weight:800;min-height:40px;padding:0 14px;cursor:pointer}
 `;
 
-function page({ title, body, authed, active, dueCount, csrf, back }) {
+function page({ title, body, authed, active, dueCount, csrf, back, attention = 0 }) {
   const dock = authed ? `<nav class="dock" aria-label="Leads">
     <a href="/crm/" class="${active === 'all' ? 'on' : ''}" ${active === 'all' ? 'aria-current="page"' : ''}>Leads</a>
     <a href="/crm/due" class="${active === 'due' ? 'on' : ''}" ${active === 'due' ? 'aria-current="page"' : ''}>Due${dueCount ? ` <span class="badge">${dueCount}</span>` : ''}</a>
@@ -239,6 +269,7 @@ ${body.includes('class="login"') ? '' : `<header class="appbar">${backLink}<div 
 ${body}
 ${dock}
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/crm/sw.js',{scope:'/crm/'}).catch(function(){})}</script>
+${authed ? `<script>(function(){var n=${Math.max(0, Math.floor(Number(attention) || 0))};try{if(!navigator.setAppBadge)return;var p=n>0?navigator.setAppBadge(n):(navigator.clearAppBadge?navigator.clearAppBadge():navigator.setAppBadge(0));if(p&&p.catch)p.catch(function(){});}catch(e){}})();</script>` : ''}
 </body>
 </html>`;
 }
@@ -255,6 +286,7 @@ function shell(req, session, opts) {
     authed: !!session,
     active: opts.active || '',
     dueCount: session ? leads.dueCount() : 0,
+    attention: session ? leads.attentionCount() : 0,
     csrf: session ? session.csrf : '',
     back: opts.back || '',
   });
@@ -352,18 +384,64 @@ function folderTabs(active, q) {
   return `<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('closed', 'Closed')}</nav>`;
 }
 
-function leadCard(lead, today) {
+const CLOSE_CHIPS = ['Not interested', 'Went with someone else', 'Too expensive', 'Duplicate/spam', 'Other'];
+
+function ownerCloseReason(body) {
+  const chip = String((body && body.chip) || '').trim();
+  const text = String((body && body.reason) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (chip === 'Other') return { reason: text || 'Other', blankOk: false };
+  if (CLOSE_CHIPS.includes(chip)) return { reason: chip, blankOk: false };
+  if (text) return { reason: text, blankOk: false };
+  return { reason: '', blankOk: true };
+}
+
+function withUndo(path, leadId) {
+  const safe = safeNext(path);
+  const url = new URL(safe, 'http://127.0.0.1');
+  url.searchParams.delete('saved');
+  url.searchParams.delete('sent');
+  url.searchParams.delete('error');
+  url.searchParams.set('undo', leadId);
+  return `${url.pathname}${url.search}`;
+}
+
+function stripUndo(req) {
+  const url = new URL(req.originalUrl || '/crm/', 'http://127.0.0.1');
+  url.searchParams.delete('undo');
+  return safeNext(url.pathname + url.search);
+}
+
+function undoToast(req) {
+  const id = String(req.query.undo || '');
+  if (!/^L-\d{6}-[0-9A-F]{4}$/.test(id)) return '';
+  const lead = leads.find(id);
+  if (!lead || lead.closedBy !== 'owner' || (lead.status !== 'Closed' && lead.status !== 'Lost')) return '';
+  return `<div class="toast" data-undo-toast role="status"><p>Moved to Closed</p><form method="post" action="/crm/lead/${esc(id)}/undo-close"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><input type="hidden" name="next" value="${esc(stripUndo(req))}"><button type="submit">Undo</button></form></div><script>setTimeout(function(){var t=document.querySelector('[data-undo-toast]');if(t)t.remove();},5000);</script>`;
+}
+
+function listReturn(folder, q, dueOnly) {
+  if (dueOnly) return '/crm/due';
+  const params = new URLSearchParams();
+  params.set('folder', folder || 'new');
+  if (q.status) params.set('status', q.status);
+  if (q.source) params.set('source', q.source);
+  if (q.q) params.set('q', q.q);
+  return `/crm/?${params}`;
+}
+
+function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
   const name = lead.name || lead.email || lead.phone || 'No name';
   const route = [lead.pickup, lead.dropoff].filter(Boolean).join(' → ');
   const bits = [lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · ');
   const tel = leads.telHref(lead.phone);
+  const closed = lead.status === 'Closed' || lead.status === 'Lost';
   let due = '';
   if (lead.followUpDate && lead.status !== 'Booked' && lead.status !== 'Lost' && lead.status !== 'Closed') {
     if (lead.followUpDate < today) due = `<div class="dueflag overdue">Overdue · ${esc(fmtDay(lead.followUpDate))}</div>`;
     else if (lead.followUpDate === today) due = '<div class="dueflag">Due today</div>';
     else due = `<div class="dueflag">Follow up ${esc(fmtDay(lead.followUpDate))}</div>`;
   }
-  return `<article class="card">
+  const article = `<article class="card">
     <a class="card-main" href="/crm/lead/${esc(lead.id)}">
       <div class="card-top"><strong>${esc(name)}</strong><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span></div>
       ${route ? `<div class="route">${esc(route)}</div>` : ''}
@@ -371,8 +449,13 @@ function leadCard(lead, today) {
       ${lead.needsJohan ? '<div class="dueflag overdue">Needs Johan</div>' : ''}
       ${due}
     </a>
-    ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
+    <div class="card-tools">
+      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop"><button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
+      ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
+    </div>
   </article>`;
+  if (closed) return article;
+  return `<div class="swipe"><form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
 }
 
 function listPage(req, res, { dueOnly }) {
@@ -393,7 +476,8 @@ function listPage(req, res, { dueOnly }) {
           ? 'No leads match.'
           : 'No new quotes. Website quotes land here until you open them.';
   const banner = dueOnly ? '' : `<div id="push-banner" class="panel" hidden><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><p id="push-ios" hidden>On iPhone, add JF Leads to your Home Screen, open it from the icon, then tap Enable notifications.</p><p id="push-ask">Get a ping on this phone when a quote or a reply comes in.</p><button type="button" class="btn btn-yellow" id="push-enable">Enable notifications</button></div>`;
-  const main = `${dueOnly ? '' : folderTabs(folder, q)}${banner}${filters(dueOnly ? 'due' : 'all', q)}<p class="count">${rows.length} ${dueOnly ? 'due' : rows.length === 1 ? 'lead' : 'leads'}</p>${rows.length ? rows.map((r) => leadCard(r, today)).join('') : `<div class="empty">${empty}</div>`}${dueOnly ? '' : PUSH_JS}`;
+  const back = listReturn(folder, q, dueOnly);
+  const main = `${undoToast(req)}${dueOnly ? '' : folderTabs(folder, q)}${banner}${filters(dueOnly ? 'due' : 'all', q)}<p class="count">${rows.length} ${dueOnly ? 'due' : rows.length === 1 ? 'lead' : 'leads'}</p>${rows.length ? rows.map((r) => leadCard(r, today, { csrf: req.crm.csrf, next: back })).join('') : `<div class="empty">${empty}</div>`}${dueOnly ? '' : PUSH_JS}${SWIPE_JS}`;
   sendHtml(req, res, 200, shell(req, req.crm, { title, main, active: dueOnly ? 'due' : 'all' }));
 }
 
@@ -474,6 +558,47 @@ function timelineHtml(lead) {
   }).join('');
 }
 
+const SWIPE_JS = `<script>
+(function(){
+  function shut(except){
+    document.querySelectorAll('.swipe.is-open').forEach(function(el){ if(el!==except) el.classList.remove('is-open'); });
+  }
+  document.querySelectorAll('.swipe').forEach(function(row){
+    var face = row.querySelector('.card');
+    var form = row.querySelector('.swipe-close');
+    if(!face || !form) return;
+    var startX=0, startY=0, dx=0, tracking=false, locked=false, swiped=false;
+    face.addEventListener('touchstart', function(e){
+      if(e.target.closest('button,summary,.call')) return;
+      var t=e.touches[0]; startX=t.clientX; startY=t.clientY; dx=0; tracking=true; locked=false;
+    }, {passive:true});
+    face.addEventListener('touchmove', function(e){
+      if(!tracking) return;
+      var t=e.touches[0]; dx=t.clientX-startX; var dy=t.clientY-startY;
+      if(!locked){
+        if(Math.abs(dy)>Math.abs(dx)){ tracking=false; face.style.transform=''; return; }
+        if(Math.abs(dx)<8) return;
+        locked=true;
+      }
+      if(dx<0){ e.preventDefault(); face.style.transform='translateX('+Math.max(dx,-120)+'px)'; }
+    }, {passive:false});
+    face.addEventListener('touchend', function(){
+      if(!tracking){ face.style.transform=''; return; }
+      tracking=false;
+      face.style.transform='';
+      if(dx<-100){ swiped=true; if(form.requestSubmit) form.requestSubmit(); else form.submit(); return; }
+      if(dx<-40){ swiped=true; shut(row); row.classList.add('is-open'); }
+      else row.classList.remove('is-open');
+    });
+    face.addEventListener('click', function(e){
+      if(!swiped) return;
+      e.preventDefault();
+      e.stopPropagation();
+      swiped=false;
+    }, true);
+  });
+})();
+</script>`;
 const PUSH_JS = `<script>
 (function(){
   var banner=document.getElementById('push-banner');
@@ -525,6 +650,22 @@ document.querySelectorAll('[data-draft]').forEach(function(btn){
 });
 </script>`;
 
+function closeSheet(lead, csrf) {
+  const chips = CLOSE_CHIPS.map((label) => `<label><input type="radio" name="chip" value="${esc(label)}"> ${esc(label)}</label>`).join('');
+  return `<div class="sheet" id="close-sheet" role="dialog" aria-labelledby="close-title">
+    <a class="sheet-backdrop" href="/crm/lead/${esc(lead.id)}" aria-label="Cancel"></a>
+    <form class="sheet-card" method="post" action="/crm/lead/${esc(lead.id)}/close">
+      <input type="hidden" name="_csrf" value="${csrf}">
+      <h2 id="close-title">Move to Closed</h2>
+      <p class="hint">Optional. Pick a reason, or leave it blank.</p>
+      <div class="chips">${chips}</div>
+      <label class="other-text">Other reason<input name="reason" maxlength="200" placeholder="Write a short reason"></label>
+      <button class="btn btn-dark" type="submit">Confirm</button>
+      <a class="btn btn-line" href="/crm/lead/${esc(lead.id)}">Cancel</a>
+    </form>
+  </div>`;
+}
+
 function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
   const tel = leads.telHref(lead.phone);
   const mail = leads.mailHref(lead.email);
@@ -540,9 +681,12 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
   const smsHint = twilio.configured() ? '' : '<p class="hint">Texting is off until Twilio is set up in Settings.</p>';
   const aiHint = ai.keySet() ? '' : '<p class="hint">Draft with AI is off until an OpenAI key is set.</p>';
   const main = `
+    ${undoToast(req)}
     ${flash(req)}
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
-    ${(lead.status === 'Closed' || lead.status === 'Lost') ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}">` : ''}${(lead.status === 'Closed' || lead.status === 'Lost') ? '<button class="btn btn-yellow" type="submit">Reopen</button></form>' : ''}
+    ${(lead.status === 'Closed' || lead.status === 'Lost')
+      ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow" type="submit">Reopen</button></form>`
+      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>`}
     <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
@@ -558,7 +702,6 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
       <button class="btn btn-dark" type="submit">Save auto-reply</button>
     </form>
     ${lead.needsJohan ? `<form method="post" action="/crm/lead/${esc(lead.id)}/ai"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="clearJohan" value="1"><button class="btn btn-line" type="submit">Clear Needs Johan</button></form>` : ''}
-    ${lead.status === 'Closed' || lead.status === 'Lost' ? '' : `<form method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${csrf}"><label>Close reason<input name="reason" maxlength="200" placeholder="Not interested"></label><button class="btn btn-line" type="submit">Close</button></form>`}
     <form method="post" action="/crm/lead/${esc(lead.id)}">
       <input type="hidden" name="_csrf" value="${csrf}">
       <div class="panel">
@@ -585,6 +728,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     </form>
     </details>
     <section class="panel"><h2>Original message</h2><p class="msg">${esc(lead.message || '—')}</p>${lead.externalId ? `<p class="meta">Reference ${esc(lead.externalId)}</p>` : ''}</section>
+    ${(lead.status === 'Closed' || lead.status === 'Lost') ? '' : closeSheet(lead, csrf)}
     ${DRAFT_JS}`;
   sendHtml(req, res, status, shell(req, req.crm, { title: name, main, active: 'all', back: '/crm/' }));
 }
@@ -727,7 +871,28 @@ self.addEventListener('fetch',function(e){
 self.addEventListener('push',function(event){
   var data={title:'JF Hauling',body:'New lead',url:'/crm/'};
   try{if(event.data)data=Object.assign(data,event.data.json());}catch(e){}
-  event.waitUntil(self.registration.showNotification(data.title||'JF Hauling',{body:data.body||'',icon:'/crm/icon-192.png',badge:'/crm/icon-192.png',data:{url:data.url||'/crm/'}}));
+  function applyBadge(count){
+    var n=Number(count);
+    if(!isFinite(n)||n<0)return;
+    n=Math.floor(n);
+    var nav=self.navigator;
+    try{
+      if(nav&&nav.setAppBadge){
+        var p=n>0?nav.setAppBadge(n):(nav.clearAppBadge?nav.clearAppBadge():nav.setAppBadge(0));
+        if(p&&p.catch)p.catch(function(){});
+      }
+    }catch(e){}
+    try{
+      var reg=self.registration;
+      if(reg&&reg.setAppBadge){
+        var q=n>0?reg.setAppBadge(n):(reg.clearAppBadge?reg.clearAppBadge():reg.setAppBadge(0));
+        if(q&&q.catch)q.catch(function(){});
+      }
+    }catch(e){}
+  }
+  var jobs=[self.registration.showNotification(data.title||'JF Hauling',{body:data.body||'',icon:'/crm/icon-192.png',badge:'/crm/icon-192.png',data:{url:data.url||'/crm/'}})];
+  if(typeof data.badge==='number') jobs.push(Promise.resolve().then(function(){applyBadge(data.badge);}));
+  event.waitUntil(Promise.all(jobs));
 });
 self.addEventListener('notificationclick',function(event){
   event.notification.close();
@@ -852,6 +1017,16 @@ function mount(app) {
     const minutes = req.query.minutes == null || req.query.minutes === '' ? 30 : Number(req.query.minutes);
     if (!Number.isFinite(minutes) || minutes < 0) return res.status(400).json({ error: 'minutes must be a number.' });
     res.json(leads.needsReply({ minutes, since }));
+  });
+  app.post('/api/resend/inbound', async (req, res) => {
+    privateHeaders(res);
+    try {
+      const result = await require('./resend-inbound').handle(req);
+      res.status(result.status).json(result.body);
+    } catch {
+      console.error('[resend] inbound failed');
+      res.status(500).json({ error: 'Could not file that email.' });
+    }
   });
   app.post('/api/leads/:id/close', (req, res) => {
     privateHeaders(res);
@@ -999,8 +1174,19 @@ function mount(app) {
   app.post('/crm/lead/:id/close', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
-    leads.closeLead(lead.id, { reason: String((req.body && req.body.reason) || 'Closed by owner'), by: 'owner' });
-    res.redirect(303, `/crm/lead/${lead.id}?saved=1`);
+    const parsed = ownerCloseReason(req.body);
+    leads.closeLead(lead.id, { reason: parsed.reason, by: 'owner', blankOk: parsed.blankOk });
+    const next = String((req.body && req.body.next) || '');
+    res.redirect(303, next ? withUndo(next, lead.id) : withUndo(`/crm/lead/${lead.id}`, lead.id));
+  });
+  app.post('/crm/lead/:id/undo-close', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.undoClose(lead.id);
+    const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
+    const url = new URL(next, 'http://127.0.0.1');
+    url.searchParams.delete('undo');
+    res.redirect(303, url.pathname + url.search);
   });
   app.post('/crm/lead/:id/reopen', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);

@@ -251,9 +251,14 @@ function addTimeline(id, event) {
   const current = all().find((r) => r.id === id);
   if (!current) return { ok: false, status: 404, error: 'That lead was not found.' };
   const externalId = clip(event.externalId, EXTERNAL_MAX);
+  const messageId = clip(event.messageId, 240);
   const timeline = Array.isArray(current.timeline) ? current.timeline.slice() : [];
   if (externalId && timeline.some((item) => item.externalId === externalId)) {
     return { ok: true, duplicate: true, lead: current };
+  }
+  if (messageKey(messageId)) {
+    const prior = findByMessageId(messageId);
+    if (prior) return { ok: true, duplicate: true, lead: prior };
   }
   const at = event.at || new Date().toISOString();
   const item = {
@@ -265,7 +270,7 @@ function addTimeline(id, event) {
     body: clipMulti(event.body, 4000),
     ai: !!event.ai,
     externalId,
-    messageId: clip(event.messageId, 240),
+    messageId,
   };
   if (!item.body && !item.subject) return { ok: false, status: 400, error: 'That message was empty.' };
   timeline.push(item);
@@ -287,10 +292,38 @@ function setFlags(id, patch) {
   return store.update('leads', id, next);
 }
 
+function messageKey(id) {
+  return String(id || '').trim().replace(/^<|>$/g, '').toLowerCase();
+}
+
 function findByExternalId(externalId) {
   const id = String(externalId || '');
   if (!id) return null;
   return all().find((r) => r.externalId === id || (r.timeline || []).some((item) => item.externalId === id)) || null;
+}
+
+function findByMessageId(messageId) {
+  const needle = messageKey(messageId);
+  if (!needle) return null;
+  return all().find((row) => (row.timeline || []).some((item) => messageKey(item.messageId) === needle)) || null;
+}
+
+function findLoose(id) {
+  const needle = String(id || '').trim().toLowerCase();
+  if (!needle) return null;
+  return all().find((row) => String(row.id).toLowerCase() === needle) || null;
+}
+
+function needsAttention(lead) {
+  if (!lead || lead.status === 'Closed' || lead.status === 'Lost' || lead.status === 'Booked') return false;
+  if (folderOf(lead) === 'new') return true;
+  return !!awaitingReply(lead);
+}
+
+function attentionCount() {
+  let count = 0;
+  for (const lead of all()) if (needsAttention(lead)) count += 1;
+  return count;
 }
 
 function findByEmail(email) {
@@ -362,15 +395,40 @@ function folderCounts() {
   return counts;
 }
 
-function closeLead(id, { reason = '', by = 'owner' } = {}) {
+function closeLead(id, { reason = '', by = 'owner', blankOk = false } = {}) {
   const lead = all().find((row) => row.id === id);
   if (!lead) return null;
-  return store.update('leads', id, {
+  const cleaned = String(reason || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const already = lead.status === 'Closed' || lead.status === 'Lost';
+  const patch = {
     status: 'Closed',
-    closedReason: String(reason || 'Not interested').replace(/\s+/g, ' ').trim().slice(0, 200),
+    closedReason: blankOk ? cleaned : (cleaned || 'Not interested'),
     closedAt: new Date().toISOString(),
     closedBy: by === 'ai' ? 'ai' : 'owner',
     aiAutoReply: false,
+  };
+  if (!already) {
+    patch.statusBeforeClose = lead.status || 'New';
+    patch.aiAutoReplyBeforeClose = !!lead.aiAutoReply;
+  }
+  return store.update('leads', id, patch);
+}
+
+function undoClose(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  if (lead.status !== 'Closed' && lead.status !== 'Lost') return lead;
+  const previous = STATUSES.includes(lead.statusBeforeClose) && lead.statusBeforeClose !== 'Closed' && lead.statusBeforeClose !== 'Lost'
+    ? lead.statusBeforeClose
+    : 'Contacted';
+  return store.update('leads', id, {
+    status: previous,
+    closedReason: '',
+    closedAt: '',
+    closedBy: '',
+    statusBeforeClose: '',
+    aiAutoReply: lead.aiAutoReplyBeforeClose === true,
+    aiAutoReplyBeforeClose: false,
   });
 }
 
@@ -558,5 +616,6 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
-  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose,
+  findByMessageId, findLoose, messageKey, needsAttention, attentionCount,
 };

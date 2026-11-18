@@ -87,10 +87,18 @@ async function deliver(sub, payload) {
   }
 }
 
+function withBadge(payload) {
+  let badge = 0;
+  try { badge = require('./leads').attentionCount(); } catch { badge = 0; }
+  if (!Number.isFinite(badge) || badge < 0) badge = 0;
+  return Object.assign({}, payload, { badge: Math.floor(badge) });
+}
+
 async function broadcast(payload) {
   if (!configured()) return 0;
   const rows = list();
-  await Promise.all(rows.map((sub) => deliver(sub, payload)));
+  const body = withBadge(payload);
+  await Promise.all(rows.map((sub) => deliver(sub, body)));
   return rows.length;
 }
 
@@ -145,5 +153,5 @@ async function notifyCustom({ title, body, leadId }) {
 
 module.exports = {
   ensureKeys, publicKey, configured, list, save, remove, setSender, deliver, broadcast,
-  notifyNewLead, notifyInbound, notifyCustom, quoteText, shortName,
+  notifyNewLead, notifyInbound, notifyCustom, quoteText, shortName, withBadge,
 };
