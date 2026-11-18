@@ -21,6 +21,7 @@
     "test:resend": "node tests/crm-resend-inbound.js",
     "test:thread": "node tests/crm-thread.js",
     "test:replies": "node tests/crm-replies.js",
+    "test:scheduled": "node tests/crm-scheduled.js",
     "test:signature": "node tests/crm-signature.js",
     "test:reviews": "node tests/reviews.js"
   },

@@ -482,6 +482,7 @@ function folderOf(lead) {
   if (lead.manualFolder === 'replies') return 'replies';
   if (lead.manualFolder === 'replied') return 'replied';
   if (latestUnansweredReplyAt(lead)) return 'replies';
+  if (lead.status === 'Booked') return 'scheduled';
   if (lead.reopenedAt && !outboundAfter(lead, lead.reopenedAt)) return 'opened';
   if (hasOutbound(lead) || lead.markedRepliedAt) return 'replied';
   if (lead.openedAt) return 'opened';
@@ -497,13 +498,60 @@ function setReplyFolder(id, folder) {
   return lead;
 }
 
+function scheduleLead(id, jobDateRaw) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  const raw = String(jobDateRaw || '').trim();
+  const jobDate = raw ? normDate(raw) : (lead.jobDate || '');
+  if (raw && jobDate == null) return { error: 'Job date must be a real calendar date.' };
+  const patch = { status: 'Booked', manualFolder: '', jobDate: jobDate || '' };
+  if (lead.status !== 'Booked') patch.statusBeforeSchedule = lead.status || 'Quoted';
+  const saved = store.update('leads', id, patch);
+  if (saved) {
+    addTimeline(id, {
+      kind: 'note',
+      system: true,
+      body: jobDate ? `Scheduled for ${jobDate}` : 'Scheduled',
+      externalId: `sys:schedule:${saved.updatedAt}`,
+      skipUnread: true,
+      skipStrip: true,
+    });
+  }
+  return saved ? find(id) : null;
+}
+
+function unscheduleLead(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  const previous = STATUSES.includes(lead.statusBeforeSchedule) && !['Booked', 'Closed', 'Lost'].includes(lead.statusBeforeSchedule)
+    ? lead.statusBeforeSchedule
+    : (hasOutbound(lead) ? 'Quoted' : 'Contacted');
+  const saved = store.update('leads', id, {
+    status: previous,
+    statusBeforeSchedule: '',
+    jobDate: '',
+    manualFolder: '',
+  });
+  if (saved) {
+    addTimeline(id, {
+      kind: 'note',
+      system: true,
+      body: 'Moved back from scheduled',
+      externalId: `sys:unschedule:${saved.updatedAt}`,
+      skipUnread: true,
+      skipStrip: true,
+    });
+  }
+  return saved ? find(id) : null;
+}
+
 function outboundAfter(lead, at) {
   if (!at) return hasOutbound(lead);
   return (lead.timeline || []).some((item) => (item.kind === 'email' || item.kind === 'sms') && item.direction === 'out' && String(item.at) > String(at));
 }
 
 function folderCounts() {
-  const counts = { new: 0, opened: 0, replied: 0, replies: 0, closed: 0 };
+  const counts = { new: 0, opened: 0, replied: 0, replies: 0, scheduled: 0, closed: 0 };
   for (const lead of all()) counts[folderOf(lead)] += 1;
   return counts;
 }
@@ -687,7 +735,7 @@ function query({ status = '', source = '', q = '', dueOnly = false, folder = '' 
   }
   if (status && STATUSES.includes(status)) rows = rows.filter((r) => r.status === status);
   if (source && SOURCES.includes(source)) rows = rows.filter((r) => r.source === source);
-  if (folder === 'new' || folder === 'opened' || folder === 'replied' || folder === 'replies' || folder === 'closed') rows = rows.filter((r) => folderOf(r) === folder);
+  if (folder === 'new' || folder === 'opened' || folder === 'replied' || folder === 'replies' || folder === 'scheduled' || folder === 'closed') rows = rows.filter((r) => folderOf(r) === folder);
   const needle = String(q || '').trim().toLowerCase();
   if (needle) rows = rows.filter((r) => haystack(r).includes(needle));
   return { rows, today };
@@ -754,7 +802,7 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
-  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose, setReplyFolder, latestUnansweredReplyAt,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose, setReplyFolder, scheduleLead, unscheduleLead, latestUnansweredReplyAt,
   findByMessageId, findLoose, messageKey, needsAttention, attentionCount, matchLead, ensureThread, ensureAllThreads,
   threadItems, lastSnippet, threadStamp,
 };
