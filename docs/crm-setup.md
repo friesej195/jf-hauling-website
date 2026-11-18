@@ -119,6 +119,11 @@ The list has three folders:
 - **New** — not opened yet
 - **Opened** — you opened the quote and have not sent an email or a text yet
 - **Replied** — at least one email or text went out (including an AI reply)
+- **Closed** — the customer is not interested, or the lead is Lost. Booked jobs stay out of Closed
+
+A clear “no thanks”, “went with someone else”, or “please stop” on an inbound email or text is classified by OpenAI. The lead is closed only when the model returns `not_interested` with confidence at least 0.8. The customer message is treated as untrusted and the model may return only JSON. If OpenAI is unset or fails, the lead is left as it is, and no automatic reply is sent for a message that just closed the lead. A later message that clearly wants the haul reopens it into Opened. The phone gets `Closed: Jane D. - too expensive` or `Reopened: Jane D.`
+
+`POST /api/leads/<id>/close` with `{ "reason": "Not interested" }` and `POST /api/leads/<id>/reopen` use the same bearer token. On the lead, **More** has Close, and a closed lead shows **Closed by AI: reason** with Reopen.
 
 Opening a lead records that visit. Sending moves it to Replied. The status list (New, Contacted, Quoted, Booked, Lost) is unchanged.
 

@@ -264,10 +264,16 @@ async function pullInbox(fetchImpl = fetch) {
     });
     if (added && added.duplicate) continue;
     logged += 1;
-    if (!isNew) {
+    let closed = false;
+    try {
+      const intent = require('./intent');
+      const decision = await intent.applyCustomerIntent(lead.id, `${subject}\n${preview}`, fetchImpl);
+      closed = !!decision.closed;
+    } catch { /* classification is optional */ }
+    if (!closed && !isNew) {
       try {
         const ai = require('./ai-reply');
-        await ai.handleAutoReply(lead.id, { channel: 'email', from: email, text: `${subject}\n${preview}`, subject });
+        await ai.handleAutoReply(lead.id, { channel: 'email', from: email, text: `${subject}\n${preview}`, subject, fetchImpl });
       } catch (err) {
         console.error(`[ai] failed id=${lead.id} reason=email`);
       }

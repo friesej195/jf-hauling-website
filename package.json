@@ -15,6 +15,7 @@
     "test:channels": "node tests/crm-channels.js",
     "test:mailcrm": "node tests/crm-mail.js",
     "test:inbox": "node tests/crm-inbox.js",
+    "test:close": "node tests/crm-close.js",
     "test:reviews": "node tests/reviews.js"
   },
   "keywords": [],
