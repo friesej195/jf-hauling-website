@@ -5,17 +5,27 @@ const DEFAULT_EMAIL_HTML = `<table cellpadding="0" cellspacing="0" style="font-f
 <tr>
 <td style="padding-right:14px;vertical-align:middle;"><img src="https://jfhauling.ca/img/brand/logo-160.png" width="80" height="81" alt="JF Hauling" style="display:block;"></td>
 <td style="border-left:3px solid #F6B913;padding-left:14px;vertical-align:middle;line-height:1.5;">
-<strong style="font-size:16px;">Johan Friesen</strong><br>
+<strong style="font-size:16px;">John Friesen</strong><br>
 JF Hauling &middot; Pickup &amp; Gooseneck Flat Deck Hauling<br>
 <a href="tel:+12265451745" style="color:#2A2D32;text-decoration:none;">226-545-1745</a> &middot; <a href="mailto:jfhauling@outlook.com" style="color:#2A2D32;">jfhauling@outlook.com</a><br>
-<a href="https://jfhauling.ca" style="color:#2A2D32;font-weight:bold;">jfhauling.ca</a> &middot; Listowel, ON &middot; Serving all of Ontario since 2018
+<a href="https://jfhauling.ca" style="color:#2A2D32;font-weight:bold;">jfhauling.ca</a> &middot; Serving all of Ontario since 2018
 </td></tr></table>`;
 
-const DEFAULT_EMAIL_TEXT = 'Johan Friesen\nJF Hauling · Pickup & Gooseneck Flat Deck Hauling\n226-545-1745 · jfhauling@outlook.com\njfhauling.ca · Listowel, ON';
+const DEFAULT_EMAIL_TEXT = 'John Friesen\nJF Hauling · Pickup & Gooseneck Flat Deck Hauling\n226-545-1745 · jfhauling@outlook.com\njfhauling.ca';
 
-const DEFAULT_SMS = '\n- Johan, JF Hauling 226-545-1745 jfhauling.ca';
+const DEFAULT_SMS = '\n- John, JF Hauling 226-545-1745 jfhauling.ca';
 
-const SIGN_OFF = /^(?:jf hauling\.?|best(?:\s+regards)?,?(?:\s+johan)?\.?|thanks,?(?:\s+johan)?\.?|thank you,?(?:\s+johan)?\.?|cheers,?(?:\s+johan)?\.?|regards,?(?:\s+johan)?\.?|-\s*johan\b.*|johan friesen)$/i;
+const SIGN_OFF = /^(?:jf hauling\.?|best(?:\s+regards)?,?(?:\s+joh(?:a)?n)?\.?|thanks,?(?:\s+joh(?:a)?n)?\.?|thank you,?(?:\s+joh(?:a)?n)?\.?|cheers,?(?:\s+joh(?:a)?n)?\.?|regards,?(?:\s+joh(?:a)?n)?\.?|-\s*joh(?:a)?n\b.*|joh(?:a)?n friesen)$/i;
+
+function applyNameChange(value) {
+  return String(value || '')
+    .replace(/Johan Friesen/g, 'John Friesen')
+    .replace(/- Johan, JF Hauling/g, '- John, JF Hauling')
+    .replace(/ &middot; Listowel, ON &middot; /g, ' &middot; ')
+    .replace(/ · Listowel, ON · /g, ' · ')
+    .replace(/ · Listowel, ON/g, '')
+    .replace(/ &middot; Listowel, ON/g, '');
+}
 
 function current() {
   const saved = settings.read();
@@ -88,6 +98,7 @@ module.exports = {
   DEFAULT_EMAIL_HTML,
   DEFAULT_EMAIL_TEXT,
   DEFAULT_SMS,
+  applyNameChange,
   current,
   cleanSignatureHtml,
   stripSignOff,
