@@ -72,6 +72,7 @@ function customerReplyList(lead) {
 async function sendResend(message, fetchImpl = fetch) {
   const to = Array.isArray(message.to) ? message.to : [message.to];
   const payload = { from: message.from, to, subject: message.subject, text: message.text };
+  if (message.html) payload.html = message.html;
   if (message.replyTo) payload.reply_to = message.replyTo;
   if (message.bcc) payload.bcc = Array.isArray(message.bcc) ? message.bcc : [message.bcc];
   if (message.headers && Object.keys(message.headers).length) payload.headers = message.headers;
@@ -134,8 +135,8 @@ async function sendCustomer({ to, subject, text, messageId, inReplyTo, reference
     ...(inReplyTo ? { 'In-Reply-To': inReplyTo } : {}),
     ...(references && references.length ? { References: references.join(' ') } : {}),
   });
-  const safeText = guard.stripBlocked(text);
-  const message = { from: crmFrom(), to, replyTo, bcc, subject: guard.stripBlocked(subject), text: safeText, headers };
+  const signed = require('./signature').composeEmail(guard.stripBlocked(text));
+  const message = { from: crmFrom(), to, replyTo, bcc, subject: guard.stripBlocked(subject), text: signed.text, html: signed.html, headers };
   try {
     if (active === 'resend') {
       await sendResend(message, fetchImpl);
@@ -149,6 +150,7 @@ async function sendCustomer({ to, subject, text, messageId, inReplyTo, reference
         replyTo: replyTo || undefined,
         subject: message.subject,
         text: message.text,
+        html: message.html,
         messageId: messageId || undefined,
         inReplyTo: inReplyTo || undefined,
         references: references && references.length ? references : undefined,

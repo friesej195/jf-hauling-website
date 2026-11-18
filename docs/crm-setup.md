@@ -129,6 +129,8 @@ Opening a lead records that visit. Sending moves it to Replied. The status list 
 
 On a lead, choose **Email** or **Text**, then **Draft with AI** or **Send**. A channel is greyed out when the lead has no address or no phone. AI auto-reply, status, and the note box are under **More**.
 
+Every CRM email and text, including an AI reply, gets Johan’s signature. The composer shows it in grey under the message. Email is the Outlook signature (logo, name, phone, and site) plus a plain-text version. A text ends with `- Johan, JF Hauling 226-545-1745 jfhauling.ca`. A trailing “JF Hauling” or “Best, Johan” is removed first so it is not added twice. Edit both signatures in **Settings**. They are stored on the data disk.
+
 ## Receiving replies on reply.jfhauling.ca
 
 Leave the MX records on `jfhauling.ca` alone. Namecheap email forwarding for the root domain stays as it is. Receiving uses the subdomain `reply.jfhauling.ca` only. Until `CRM_REPLY_TO_INBOUND` is set, customer mail still uses Reply-To `jfhauling@outlook.com` and nothing else changes.
