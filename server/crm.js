@@ -244,7 +244,14 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .rowmenu summary{list-style:none;min-width:44px;min-height:40px;display:flex;align-items:center;justify-content:center;font-size:1.35rem;font-weight:800;cursor:pointer;line-height:1}
 .rowmenu summary::-webkit-details-marker{display:none}
 .rowmenu-pop{position:absolute;right:0;top:100%;z-index:4;background:#fff;border:1px solid #e4e5e7;border-radius:12px;box-shadow:0 8px 24px rgba(42,45,50,.16);min-width:168px;padding:6px}
-.rowmenu-pop button{width:100%;min-height:44px;border:0;background:transparent;font-weight:800;color:#9b2c2c;text-align:left;padding:0 12px;border-radius:8px;cursor:pointer}
+.rowmenu-pop button{width:100%;min-height:44px;border:0;background:transparent;font-weight:800;color:var(--ink);text-align:left;padding:0 12px;border-radius:8px;cursor:pointer}
+.rowmenu-pop button.close{color:#9b2c2c}
+.move-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.move-row .btn{min-height:52px}
+.move-row .span2{grid-column:1 / -1}
+.move-schedule{display:flex;gap:8px;align-items:end;grid-column:1 / -1}
+.move-schedule label{flex:1;margin:0}
+.move-schedule .btn{width:auto;flex:1 1 46%;min-height:52px}
 .card:has(.rowmenu[open]){overflow:visible;z-index:4}
 .swipe:has(.rowmenu[open]){z-index:4}
 .toast{position:fixed;left:14px;right:14px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:9;background:#2A2D32;color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(42,45,50,.25)}
@@ -435,8 +442,12 @@ function undoToast(req) {
   const id = String(req.query.undo || '');
   if (!/^L-\d{6}-[0-9A-F]{4}$/.test(id)) return '';
   const lead = leads.find(id);
-  if (!lead || lead.closedBy !== 'owner' || (lead.status !== 'Closed' && lead.status !== 'Lost')) return '';
-  return `<div class="toast" data-undo-toast role="status"><p>Moved to Closed</p><form method="post" action="/crm/lead/${esc(id)}/undo-close"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><input type="hidden" name="next" value="${esc(stripUndo(req))}"><button type="submit">Undo</button></form></div><script>setTimeout(function(){var t=document.querySelector('[data-undo-toast]');if(t)t.remove();},5000);</script>`;
+  if (!lead) return '';
+  const names = { replies: 'New replies', replied: 'Replied', scheduled: 'Scheduled', closed: 'Closed', opened: 'Opened', new: 'New' };
+  const canUndo = (lead.moveUndo && lead.moveUndo.status) || (lead.closedBy === 'owner' && (lead.status === 'Closed' || lead.status === 'Lost'));
+  if (!canUndo) return '';
+  const where = names[leads.folderOf(lead)] || 'Updated';
+  return `<div class="toast" data-undo-toast role="status"><p>Moved to ${esc(where)}</p><form method="post" action="/crm/lead/${esc(id)}/undo-close"><input type="hidden" name="_csrf" value="${esc(req.crm.csrf)}"><input type="hidden" name="next" value="${esc(stripUndo(req))}"><button type="submit">Undo</button></form></div><script>setTimeout(function(){var t=document.querySelector('[data-undo-toast]');if(t)t.remove();},5000);</script>`;
 }
 
 function listReturn(folder, q, dueOnly) {
@@ -472,17 +483,29 @@ function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
       ${due}
     </a>
     <div class="card-tools">
-      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop">${leads.folderOf(lead) === 'replies' ? `<button type="submit" form="mark-${esc(lead.id)}">Mark replied</button>` : ''}${leads.folderOf(lead) === 'replied' ? `<button type="submit" form="mark-${esc(lead.id)}">New replies</button>` : ''}${lead.status === 'Booked' ? `<button type="submit" form="unsched-${esc(lead.id)}">Move back</button>` : `<button type="submit" form="sched-${esc(lead.id)}">Mark scheduled</button>`}<button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
+      <details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop">${cardMenu(lead)}</div></details>
       ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
     </div>
   </article>`;
-  if (closed) return article;
-  const mark = leads.folderOf(lead) === 'replies' ? 'replied' : leads.folderOf(lead) === 'replied' ? 'replies' : '';
-  const markForm = mark ? `<form id="mark-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><input type="hidden" name="folder" value="${mark}"></form>` : '';
-  const schedForm = lead.status === 'Booked'
-    ? `<form id="unsched-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/unschedule"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`
-    : `<form id="sched-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`;
-  return `<div class="swipe">${markForm}${schedForm}<form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
+  const folder = leads.folderOf(lead);
+  const forms = [];
+  if (folder !== 'replied') forms.push(`<form id="replied-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><input type="hidden" name="folder" value="replied"></form>`);
+  else forms.push(`<form id="replies-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><input type="hidden" name="folder" value="replies"></form>`);
+  if (folder !== 'scheduled') forms.push(`<form id="sched-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`);
+  if (folder === 'closed') forms.push(`<form id="reopen-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`);
+  else forms.push(`<form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>`);
+  return `<div class="swipe">${forms.join('')}${article}</div>`;
+}
+
+function cardMenu(lead) {
+  const folder = leads.folderOf(lead);
+  const items = [];
+  if (folder !== 'replied') items.push(`<button type="submit" form="replied-${esc(lead.id)}">Mark replied</button>`);
+  else items.push(`<button type="submit" form="replies-${esc(lead.id)}">New replies</button>`);
+  if (folder !== 'scheduled') items.push(`<button type="submit" form="sched-${esc(lead.id)}">Mark scheduled</button>`);
+  if (folder === 'closed') items.push(`<button type="submit" form="reopen-${esc(lead.id)}">Reopen</button>`);
+  else items.push(`<button class="close" type="submit" form="close-${esc(lead.id)}">Close</button>`);
+  return items.join('');
 }
 
 function listPage(req, res, { dueOnly }) {
@@ -721,12 +744,15 @@ document.querySelectorAll('[data-draft]').forEach(function(btn){
 });
 </script>`;
 
-function scheduleForm(lead, csrf) {
-  if (lead.status === 'Closed' || lead.status === 'Lost') return '';
-  if (lead.status === 'Booked') {
-    return `<form method="post" action="/crm/lead/${esc(lead.id)}/unschedule"><input type="hidden" name="_csrf" value="${csrf}"><p class="hint">Scheduled${lead.jobDate ? ` for ${esc(fmtDay(lead.jobDate))}` : ''}.</p><button class="btn btn-line" type="submit">Move back</button></form>`;
-  }
-  return `<form method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${csrf}"><label>Job date<input type="date" name="jobDate" value="${esc(lead.jobDate || '')}"></label><button class="btn btn-line" type="submit">Mark scheduled</button></form>`;
+function folderMoves(lead, csrf) {
+  const folder = leads.folderOf(lead);
+  const buttons = [];
+  if (folder !== 'replied') buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replied"><button class="btn btn-dark" type="submit">Mark replied</button></form>`);
+  else buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replies"><button class="btn btn-line" type="submit">New replies</button></form>`);
+  if (folder !== 'scheduled') buttons.push(`<form class="move-schedule" method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${csrf}"><label>Job date<input type="date" name="jobDate" value="${esc(lead.jobDate || '')}"></label><button class="btn btn-line" type="submit">Mark scheduled</button></form>`);
+  if (folder === 'closed') buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow span2" type="submit">Reopen</button></form>`);
+  else buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-line" type="submit">Close</button></form>`);
+  return `<div class="move-row" aria-label="Move quote">${buttons.join('')}</div>`;
 }
 
 function replyFolderButton(lead, csrf) {
@@ -771,9 +797,8 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     ${undoToast(req)}
     ${flash(req)}
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
-    ${(lead.status === 'Closed' || lead.status === 'Lost')
-      ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow" type="submit">Reopen</button></form>`
-      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>${scheduleForm(lead, csrf)}${replyFolderButton(lead, csrf)}`}
+    ${(lead.status === 'Closed' || lead.status === 'Lost') ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p>` : ''}
+    ${folderMoves(lead, csrf)}
     <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
@@ -1290,30 +1315,39 @@ function mount(app) {
   app.post('/crm/lead/:id/schedule', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.rememberUndo(lead.id);
     const saved = leads.scheduleLead(lead.id, req.body && req.body.jobDate);
-    if (saved && saved.error) return detailPage(req, res, lead, { error: saved.error, status: 400 });
-    const next = safeNext((req.body && req.body.next) || `/crm/?folder=scheduled`);
-    res.redirect(303, next);
+    if (saved && saved.error) {
+      leads.undoMove(lead.id);
+      return detailPage(req, res, lead, { error: saved.error, status: 400 });
+    }
+    const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
+    res.redirect(303, withUndo(next, lead.id));
   });
   app.post('/crm/lead/:id/unschedule', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.rememberUndo(lead.id);
     leads.unscheduleLead(lead.id);
     const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
-    res.redirect(303, next);
+    res.redirect(303, withUndo(next, lead.id));
   });
   app.post('/crm/lead/:id/reply-folder', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
     const folder = String((req.body && req.body.folder) || '');
-    if (folder === 'replies' || folder === 'replied') leads.setReplyFolder(lead.id, folder);
+    if (folder === 'replies' || folder === 'replied') {
+      leads.rememberUndo(lead.id);
+      leads.setReplyFolder(lead.id, folder);
+    }
     const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
-    res.redirect(303, next);
+    res.redirect(303, withUndo(next, lead.id));
   });
   app.post('/crm/lead/:id/close', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
     const parsed = ownerCloseReason(req.body);
+    leads.rememberUndo(lead.id);
     leads.closeLead(lead.id, { reason: parsed.reason, by: 'owner', blankOk: parsed.blankOk });
     const next = String((req.body && req.body.next) || '');
     res.redirect(303, next ? withUndo(next, lead.id) : withUndo(`/crm/lead/${lead.id}`, lead.id));
@@ -1321,7 +1355,8 @@ function mount(app) {
   app.post('/crm/lead/:id/undo-close', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
-    leads.undoClose(lead.id);
+    if (lead.moveUndo && lead.moveUndo.status) leads.undoMove(lead.id);
+    else leads.undoClose(lead.id);
     const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
     const url = new URL(next, 'http://127.0.0.1');
     url.searchParams.delete('undo');
@@ -1330,8 +1365,10 @@ function mount(app) {
   app.post('/crm/lead/:id/reopen', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.rememberUndo(lead.id);
     leads.reopenLead(lead.id);
-    res.redirect(303, `/crm/lead/${lead.id}?saved=1`);
+    const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
+    res.redirect(303, withUndo(next, lead.id));
   });
   app.post('/crm/lead/:id/reply', requireSession, requireCsrf, async (req, res) => {
     const lead = leads.find(req.params.id);
