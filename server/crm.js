@@ -210,8 +210,8 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .replies-tab{display:flex;align-items:center;justify-content:space-between;min-height:52px;margin:0 0 8px;padding:0 14px;border-radius:14px;background:#2A2D32;color:#fff;text-decoration:none;font-weight:800;font-size:1rem}
 .replies-tab .badge{background:#F6B913;color:#2A2D32;font-size:.85rem}
 .replies-tab.on{box-shadow:inset 0 0 0 3px #F6B913}
-.folders{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 12px}
-.folders a{display:flex;align-items:center;justify-content:center;gap:4px;min-height:48px;border-radius:12px;background:#fff;border:1.5px solid #e4e5e7;text-decoration:none;font-weight:800;font-size:.78rem;color:var(--ink);padding:4px}
+.folders{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:0 0 12px}
+.folders a{display:flex;align-items:center;justify-content:center;gap:3px;min-height:48px;border-radius:12px;background:#fff;border:1.5px solid #e4e5e7;text-decoration:none;font-weight:800;font-size:.66rem;line-height:1.1;text-align:center;color:var(--ink);padding:4px}
 .folders a.on{background:#2A2D32;color:#fff;border-color:#2A2D32}
 .folders a.on .badge{background:#F6B913;color:#2A2D32}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -401,7 +401,7 @@ function folderTabs(active, q) {
   };
   const tab = (folder, label) => `<a href="${href(folder)}" class="${active === folder ? 'on' : ''}" ${active === folder ? 'aria-current="page"' : ''}>${label} <span class="badge">${counts[folder]}</span></a>`;
   const replies = `<a href="${href('replies')}" class="replies-tab${active === 'replies' ? ' on' : ''}" ${active === 'replies' ? 'aria-current="page"' : ''}>New replies <span class="badge">${counts.replies || 0}</span></a>`;
-  return `${replies}<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('closed', 'Closed')}</nav>`;
+  return `${replies}<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('scheduled', 'Scheduled')}${tab('closed', 'Closed')}</nav>`;
 }
 
 const CLOSE_CHIPS = ['Not interested', 'Went with someone else', 'Too expensive', 'Duplicate/spam', 'Other'];
@@ -466,27 +466,31 @@ function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
       <div class="card-top"><strong>${esc(name)}</strong><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span>${lead.unread ? '<span class="unread-dot" aria-label="New reply"></span>' : ''}</div>
       ${route ? `<div class="route">${esc(route)}</div>` : ''}
       <div class="meta">${esc(SOURCE_LABEL[lead.source] || lead.source)}${bits ? ` · ${esc(bits)}` : ''}</div>
+      ${lead.status === 'Booked' && lead.jobDate ? `<div class="meta">Job ${esc(fmtDay(lead.jobDate))}</div>` : ''}
       ${leads.lastSnippet(lead) ? `<div class="snippet">${esc(leads.lastSnippet(lead))}</div>` : ''}
       ${lead.needsJohan ? '<div class="dueflag overdue">Needs Johan</div>' : ''}
       ${due}
     </a>
     <div class="card-tools">
-      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop">${leads.folderOf(lead) === 'replies' ? `<button type="submit" form="mark-${esc(lead.id)}">Mark replied</button>` : ''}${leads.folderOf(lead) === 'replied' ? `<button type="submit" form="mark-${esc(lead.id)}">New replies</button>` : ''}<button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
+      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop">${leads.folderOf(lead) === 'replies' ? `<button type="submit" form="mark-${esc(lead.id)}">Mark replied</button>` : ''}${leads.folderOf(lead) === 'replied' ? `<button type="submit" form="mark-${esc(lead.id)}">New replies</button>` : ''}${lead.status === 'Booked' ? `<button type="submit" form="unsched-${esc(lead.id)}">Move back</button>` : `<button type="submit" form="sched-${esc(lead.id)}">Mark scheduled</button>`}<button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
       ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
     </div>
   </article>`;
   if (closed) return article;
   const mark = leads.folderOf(lead) === 'replies' ? 'replied' : leads.folderOf(lead) === 'replied' ? 'replies' : '';
   const markForm = mark ? `<form id="mark-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><input type="hidden" name="folder" value="${mark}"></form>` : '';
-  return `<div class="swipe">${markForm}<form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
+  const schedForm = lead.status === 'Booked'
+    ? `<form id="unsched-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/unschedule"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`
+    : `<form id="sched-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"></form>`;
+  return `<div class="swipe">${markForm}${schedForm}<form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
 }
 
 function listPage(req, res, { dueOnly }) {
-  const folder = ['new', 'replies', 'opened', 'replied', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
+  const folder = ['new', 'replies', 'opened', 'replied', 'scheduled', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
   const q = { status: String(req.query.status || ''), source: String(req.query.source || ''), q: String(req.query.q || ''), folder: dueOnly ? '' : folder };
   leads.ensureAllThreads();
   const { rows, today } = leads.query({ ...q, dueOnly, folder: q.folder });
-  const title = dueOnly ? 'Follow-ups' : (folder === 'replies' ? 'New replies' : folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
+  const title = dueOnly ? 'Follow-ups' : (folder === 'replies' ? 'New replies' : folder === 'scheduled' ? 'Scheduled' : folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
   const narrowed = q.status || q.source || q.q;
   const empty = dueOnly
     ? 'No follow-ups due. Set a follow-up date on a lead and it will show up here until the job is booked or lost.'
@@ -494,6 +498,8 @@ function listPage(req, res, { dueOnly }) {
       ? 'No new replies. Customer emails and texts land here until you answer.'
     : folder === 'opened'
       ? 'No opened quotes waiting for a reply.'
+      : folder === 'scheduled'
+        ? 'No scheduled jobs yet. Mark a quote scheduled when the job is booked.'
       : folder === 'replied'
         ? 'No quotes you have replied to yet.'
         : folder === 'closed'
@@ -715,6 +721,14 @@ document.querySelectorAll('[data-draft]').forEach(function(btn){
 });
 </script>`;
 
+function scheduleForm(lead, csrf) {
+  if (lead.status === 'Closed' || lead.status === 'Lost') return '';
+  if (lead.status === 'Booked') {
+    return `<form method="post" action="/crm/lead/${esc(lead.id)}/unschedule"><input type="hidden" name="_csrf" value="${csrf}"><p class="hint">Scheduled${lead.jobDate ? ` for ${esc(fmtDay(lead.jobDate))}` : ''}.</p><button class="btn btn-line" type="submit">Move back</button></form>`;
+  }
+  return `<form method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${csrf}"><label>Job date<input type="date" name="jobDate" value="${esc(lead.jobDate || '')}"></label><button class="btn btn-line" type="submit">Mark scheduled</button></form>`;
+}
+
 function replyFolderButton(lead, csrf) {
   const folder = leads.folderOf(lead);
   if (folder !== 'replies' && folder !== 'replied') return '';
@@ -759,7 +773,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
     ${(lead.status === 'Closed' || lead.status === 'Lost')
       ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow" type="submit">Reopen</button></form>`
-      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>${replyFolderButton(lead, csrf)}`}
+      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>${scheduleForm(lead, csrf)}${replyFolderButton(lead, csrf)}`}
     <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
@@ -1272,6 +1286,21 @@ function mount(app) {
     }
     leads.setFlags(lead.id, { aiAutoReply: req.body && req.body.aiAutoReply === '1' });
     res.redirect(303, `/crm/lead/${lead.id}?sent=ai`);
+  });
+  app.post('/crm/lead/:id/schedule', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    const saved = leads.scheduleLead(lead.id, req.body && req.body.jobDate);
+    if (saved && saved.error) return detailPage(req, res, lead, { error: saved.error, status: 400 });
+    const next = safeNext((req.body && req.body.next) || `/crm/?folder=scheduled`);
+    res.redirect(303, next);
+  });
+  app.post('/crm/lead/:id/unschedule', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.unscheduleLead(lead.id);
+    const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
+    res.redirect(303, next);
   });
   app.post('/crm/lead/:id/reply-folder', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);
