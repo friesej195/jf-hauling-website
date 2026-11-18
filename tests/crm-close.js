@@ -98,12 +98,12 @@ function aiFetch(verdict, calls) {
     body_text: 'We do still need the container moved next Thursday.',
   }, { fetchImpl: aiFetch({ not_interested: false, interested: true, confidence: 0.91, reason: 'wants the haul' }, reopenCalls) });
   const reopened = leads.find(lead.lead.id);
-  check('renewed interest reopens a closed lead into Opened', reopened.status === 'Contacted' && reopened.closedBy === '' && leads.folderOf(reopened) === 'opened' && notices.some((note) => note.body === 'Reopened: Jane T.'));
+  check('renewed interest reopens a closed lead into New replies', reopened.status === 'Contacted' && reopened.closedBy === '' && leads.folderOf(reopened) === 'replies' && notices.some((note) => note.body === 'Reopened: Jane T.'));
   check('folder counts include Closed and a closed lead stays out of the other folders', (() => {
     const counts = leads.folderCounts();
     const closedOnly = leads.query({ folder: 'closed' }).rows.every((row) => row.status === 'Closed' || row.status === 'Lost');
     const newIds = leads.query({ folder: 'new' }).rows.map((row) => row.id);
-    return counts.closed >= 1 && counts.opened >= 1 && closedOnly && !newIds.includes(smsLead.id) && !newIds.includes(lead.lead.id);
+    return counts.closed >= 1 && counts.replies >= 1 && closedOnly && !newIds.includes(smsLead.id) && !newIds.includes(lead.lead.id);
   })());
 
   const port = await freePort();

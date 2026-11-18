@@ -207,6 +207,9 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .switch input{width:1.3rem;height:1.3rem}
 .draft-status{min-height:1.2em}
 .panel .btn{margin-top:8px}
+.replies-tab{display:flex;align-items:center;justify-content:space-between;min-height:52px;margin:0 0 8px;padding:0 14px;border-radius:14px;background:#2A2D32;color:#fff;text-decoration:none;font-weight:800;font-size:1rem}
+.replies-tab .badge{background:#F6B913;color:#2A2D32;font-size:.85rem}
+.replies-tab.on{box-shadow:inset 0 0 0 3px #F6B913}
 .folders{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 12px}
 .folders a{display:flex;align-items:center;justify-content:center;gap:4px;min-height:48px;border-radius:12px;background:#fff;border:1.5px solid #e4e5e7;text-decoration:none;font-weight:800;font-size:.78rem;color:var(--ink);padding:4px}
 .folders a.on{background:#2A2D32;color:#fff;border-color:#2A2D32}
@@ -397,7 +400,8 @@ function folderTabs(active, q) {
     return `/crm/?${params}`;
   };
   const tab = (folder, label) => `<a href="${href(folder)}" class="${active === folder ? 'on' : ''}" ${active === folder ? 'aria-current="page"' : ''}>${label} <span class="badge">${counts[folder]}</span></a>`;
-  return `<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('closed', 'Closed')}</nav>`;
+  const replies = `<a href="${href('replies')}" class="replies-tab${active === 'replies' ? ' on' : ''}" ${active === 'replies' ? 'aria-current="page"' : ''}>New replies <span class="badge">${counts.replies || 0}</span></a>`;
+  return `${replies}<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('closed', 'Closed')}</nav>`;
 }
 
 const CLOSE_CHIPS = ['Not interested', 'Went with someone else', 'Too expensive', 'Duplicate/spam', 'Other'];
@@ -467,23 +471,27 @@ function leadCard(lead, today, { csrf = '', next = '/crm/' } = {}) {
       ${due}
     </a>
     <div class="card-tools">
-      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop"><button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
+      ${closed ? '' : `<details class="rowmenu"><summary aria-label="Actions for ${esc(name)}">⋯</summary><div class="rowmenu-pop">${leads.folderOf(lead) === 'replies' ? `<button type="submit" form="mark-${esc(lead.id)}">Mark replied</button>` : ''}${leads.folderOf(lead) === 'replied' ? `<button type="submit" form="mark-${esc(lead.id)}">New replies</button>` : ''}<button type="submit" form="close-${esc(lead.id)}">Close</button></div></details>`}
       ${tel ? `<a class="call" href="${esc(tel)}">Call</a>` : ''}
     </div>
   </article>`;
   if (closed) return article;
-  return `<div class="swipe"><form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
+  const mark = leads.folderOf(lead) === 'replies' ? 'replied' : leads.folderOf(lead) === 'replied' ? 'replies' : '';
+  const markForm = mark ? `<form id="mark-${esc(lead.id)}" method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><input type="hidden" name="folder" value="${mark}"></form>` : '';
+  return `<div class="swipe">${markForm}<form id="close-${esc(lead.id)}" class="swipe-close" method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${esc(csrf)}"><input type="hidden" name="next" value="${esc(next)}"><button type="submit">Close</button></form>${article}</div>`;
 }
 
 function listPage(req, res, { dueOnly }) {
-  const folder = ['new', 'opened', 'replied', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
+  const folder = ['new', 'replies', 'opened', 'replied', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
   const q = { status: String(req.query.status || ''), source: String(req.query.source || ''), q: String(req.query.q || ''), folder: dueOnly ? '' : folder };
   leads.ensureAllThreads();
   const { rows, today } = leads.query({ ...q, dueOnly, folder: q.folder });
-  const title = dueOnly ? 'Follow-ups' : (folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
+  const title = dueOnly ? 'Follow-ups' : (folder === 'replies' ? 'New replies' : folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
   const narrowed = q.status || q.source || q.q;
   const empty = dueOnly
     ? 'No follow-ups due. Set a follow-up date on a lead and it will show up here until the job is booked or lost.'
+    : folder === 'replies'
+      ? 'No new replies. Customer emails and texts land here until you answer.'
     : folder === 'opened'
       ? 'No opened quotes waiting for a reply.'
       : folder === 'replied'
@@ -707,6 +715,14 @@ document.querySelectorAll('[data-draft]').forEach(function(btn){
 });
 </script>`;
 
+function replyFolderButton(lead, csrf) {
+  const folder = leads.folderOf(lead);
+  if (folder !== 'replies' && folder !== 'replied') return '';
+  const next = folder === 'replies' ? 'replied' : 'replies';
+  const label = folder === 'replies' ? 'Mark replied' : 'New replies';
+  return `<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="${next}"><button class="btn btn-line" type="submit">${label}</button></form>`;
+}
+
 function closeSheet(lead, csrf) {
   const chips = CLOSE_CHIPS.map((label) => `<label><input type="radio" name="chip" value="${esc(label)}"> ${esc(label)}</label>`).join('');
   return `<div class="sheet" id="close-sheet" role="dialog" aria-labelledby="close-title">
@@ -743,7 +759,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
     ${(lead.status === 'Closed' || lead.status === 'Lost')
       ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow" type="submit">Reopen</button></form>`
-      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>`}
+      : `<a class="btn btn-dark close-cta" href="#close-sheet">Move to Closed</a>${replyFolderButton(lead, csrf)}`}
     <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
@@ -1256,6 +1272,14 @@ function mount(app) {
     }
     leads.setFlags(lead.id, { aiAutoReply: req.body && req.body.aiAutoReply === '1' });
     res.redirect(303, `/crm/lead/${lead.id}?sent=ai`);
+  });
+  app.post('/crm/lead/:id/reply-folder', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    const folder = String((req.body && req.body.folder) || '');
+    if (folder === 'replies' || folder === 'replied') leads.setReplyFolder(lead.id, folder);
+    const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
+    res.redirect(303, next);
   });
   app.post('/crm/lead/:id/close', requireSession, requireCsrf, (req, res) => {
     const lead = leads.find(req.params.id);

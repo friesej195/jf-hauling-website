@@ -284,6 +284,10 @@ function addTimeline(id, event) {
   timeline.push(item);
   const patch = { timeline: timeline.slice(-300) };
   if (item.direction === 'in' && kind !== 'note' && !event.skipUnread) patch.unread = true;
+  if ((kind === 'email' || kind === 'sms') && (item.direction === 'in' || item.direction === 'out')) {
+    patch.manualFolder = '';
+    if (item.direction === 'out') patch.markedRepliedAt = item.at;
+  }
   const saved = store.update('leads', id, patch);
   return saved ? { ok: true, duplicate: false, lead: saved, item } : { ok: false, status: 404, error: 'That lead was not found.' };
 }
@@ -325,7 +329,9 @@ function findLoose(id) {
 }
 
 function needsAttention(lead) {
-  if (!lead || lead.status === 'Closed' || lead.status === 'Lost' || lead.status === 'Booked') return false;
+  if (!lead || lead.status === 'Closed' || lead.status === 'Lost') return false;
+  if (folderOf(lead) === 'replies') return true;
+  if (lead.status === 'Booked') return false;
   if (folderOf(lead) === 'new') return true;
   return !!awaitingReply(lead);
 }
@@ -448,13 +454,47 @@ function hasOutbound(lead) {
   return (lead.timeline || []).some((item) => (item.kind === 'email' || item.kind === 'sms') && item.direction === 'out');
 }
 
+function isOriginalInbound(lead, item) {
+  const ext = String((item && item.externalId) || '');
+  if (ext.startsWith('origin:')) return true;
+  if (lead && lead.externalId && ext === lead.externalId) return true;
+  return false;
+}
+
+function latestUnansweredReplyAt(lead) {
+  if (!lead) return '';
+  let latest = '';
+  for (const item of lead.timeline || []) {
+    if ((item.kind !== 'email' && item.kind !== 'sms') || item.direction !== 'in') continue;
+    if (isOriginalInbound(lead, item)) continue;
+    if (String(item.at) > latest) latest = String(item.at);
+  }
+  if (!latest) return '';
+  const outbound = latestOutboundAt(lead);
+  if (outbound && outbound >= latest) return '';
+  if (lead.markedRepliedAt && String(lead.markedRepliedAt) >= latest) return '';
+  return latest;
+}
+
 function folderOf(lead) {
   if (!lead) return 'new';
   if (lead.status === 'Closed' || lead.status === 'Lost') return 'closed';
+  if (lead.manualFolder === 'replies') return 'replies';
+  if (lead.manualFolder === 'replied') return 'replied';
+  if (latestUnansweredReplyAt(lead)) return 'replies';
   if (lead.reopenedAt && !outboundAfter(lead, lead.reopenedAt)) return 'opened';
-  if (hasOutbound(lead)) return 'replied';
+  if (hasOutbound(lead) || lead.markedRepliedAt) return 'replied';
   if (lead.openedAt) return 'opened';
   return 'new';
+}
+
+function setReplyFolder(id, folder) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  const now = new Date().toISOString();
+  if (folder === 'replied') return store.update('leads', id, { manualFolder: 'replied', markedRepliedAt: now });
+  if (folder === 'replies') return store.update('leads', id, { manualFolder: 'replies', markedRepliedAt: '' });
+  return lead;
 }
 
 function outboundAfter(lead, at) {
@@ -463,7 +503,7 @@ function outboundAfter(lead, at) {
 }
 
 function folderCounts() {
-  const counts = { new: 0, opened: 0, replied: 0, closed: 0 };
+  const counts = { new: 0, opened: 0, replied: 0, replies: 0, closed: 0 };
   for (const lead of all()) counts[folderOf(lead)] += 1;
   return counts;
 }
@@ -584,12 +624,15 @@ function latestOutboundAt(lead) {
 }
 
 function awaitingReply(lead) {
-  if (!lead || lead.status === 'Lost' || lead.status === 'Closed' || lead.status === 'Booked') return null;
+  if (!lead || lead.status === 'Lost' || lead.status === 'Closed') return null;
+  if (lead.manualFolder === 'replied') return null;
+  if (lead.status === 'Booked' && !latestUnansweredReplyAt(lead)) return null;
   const events = customerEvents(lead);
   if (!events.length) return null;
   const last = events[events.length - 1];
   const outbound = latestOutboundAt(lead);
-  if (outbound && outbound >= last.at) return null;
+  const answered = [outbound, lead.markedRepliedAt].filter(Boolean).sort().pop();
+  if (answered && answered >= last.at) return null;
   return last;
 }
 
@@ -644,7 +687,7 @@ function query({ status = '', source = '', q = '', dueOnly = false, folder = '' 
   }
   if (status && STATUSES.includes(status)) rows = rows.filter((r) => r.status === status);
   if (source && SOURCES.includes(source)) rows = rows.filter((r) => r.source === source);
-  if (folder === 'new' || folder === 'opened' || folder === 'replied' || folder === 'closed') rows = rows.filter((r) => folderOf(r) === folder);
+  if (folder === 'new' || folder === 'opened' || folder === 'replied' || folder === 'replies' || folder === 'closed') rows = rows.filter((r) => folderOf(r) === folder);
   const needle = String(q || '').trim().toLowerCase();
   if (needle) rows = rows.filter((r) => haystack(r).includes(needle));
   return { rows, today };
@@ -711,7 +754,7 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
-  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose, setReplyFolder, latestUnansweredReplyAt,
   findByMessageId, findLoose, messageKey, needsAttention, attentionCount, matchLead, ensureThread, ensureAllThreads,
   threadItems, lastSnippet, threadStamp,
 };

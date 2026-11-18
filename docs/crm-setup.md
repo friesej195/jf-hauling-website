@@ -114,11 +114,12 @@ Outbound texts from the lead page use the lead’s phone, normalized to `+1` whe
 
 ## 4. Folders and replies
 
-The list has four folders:
+The list has New replies across the top, then four folders:
 
 - **New** — not opened yet
 - **Opened** — you opened the quote and have not sent an email or a text yet
-- **Replied** — at least one email or text went out (including an AI reply)
+- **New replies** — the customer wrote back and there is no answer after that message. Sending a reply, or **Mark replied**, moves it to Replied. The yellow count is included in the home-screen badge.
+- **Replied** — at least one email or text went out (including an AI reply), and the customer has not written again since
 - **Closed** — the customer is not interested, or the lead is Lost. Booked jobs stay out of Closed
 
 A clear “no thanks”, “went with someone else”, or “please stop” on an inbound email or text is classified by OpenAI. The lead is closed only when the model returns `not_interested` with confidence at least 0.8. The customer message is treated as untrusted and the model may return only JSON. If OpenAI is unset or fails, the lead is left as it is, and no automatic reply is sent for a message that just closed the lead. A later message that clearly wants the haul reopens it into Opened. The phone gets `Closed: Jane D. - too expensive` or `Reopened: Jane D.`
