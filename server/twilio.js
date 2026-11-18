@@ -58,7 +58,7 @@ async function ingestInbound({ from, body, messageSid, fetchImpl = fetch }) {
   if (phone.phonesMatch(from, config.twilio.fromNumber)) return { ok: true, ignored: true };
   if (leads.findByExternalId(sid)) return { ok: true, duplicate: true };
   const e164 = phone.toE164(from) || String(from).slice(0, 20);
-  let lead = leads.findByPhone(from);
+  let lead = leads.matchLead({ phone: from });
   let isNew = false;
   if (!lead) {
     const made = leads.create({

@@ -216,7 +216,7 @@ async function pullInbox(fetchImpl = fetch) {
   let accessToken;
   try { accessToken = await getAccessToken(fetchImpl); }
   catch { return { ok: false, reason: 'auth', created: 0, logged: 0 }; }
-  const url = `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$orderby=receivedDateTime desc&$select=id,subject,from,bodyPreview,receivedDateTime,isDraft,internetMessageId`;
+  const url = `${GRAPH}/me/mailFolders/inbox/messages?$top=25&$orderby=receivedDateTime desc&$select=id,subject,from,bodyPreview,receivedDateTime,isDraft,internetMessageId,hasAttachments`;
   const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) {
     console.error(`[outlook] inbox failed status=${res.status}`);
@@ -238,7 +238,7 @@ async function pullInbox(fetchImpl = fetch) {
     const subject = String(msg.subject || '').slice(0, 200);
     const preview = String(msg.bodyPreview || '').slice(0, 4000);
     if (!email || email === own.saved || email === own.business || isBulkAddress(email)) continue;
-    let lead = leads.findByEmail(email);
+    let lead = leads.matchLead({ email });
     let isNew = false;
     if (!lead) {
       if (!looksLikeInquiry(subject, preview)) continue;
@@ -264,6 +264,7 @@ async function pullInbox(fetchImpl = fetch) {
       externalId: msg.id,
       messageId: internetId,
       at: msg.receivedDateTime || new Date().toISOString(),
+      attachments: msg.hasAttachments ? [{ filename: 'Attachment' }] : [],
     });
     if (added && added.duplicate) continue;
     logged += 1;

@@ -160,6 +160,7 @@ async function handle(req, { fetchImpl = fetch, now = Date.now() } = {}) {
     received_at: full.created_at || data.created_at || event.created_at,
     internet_message_id: messageId,
     lead_id: leadIdFromRecipients(collectRecipients(data, full)),
+    attachments: full.attachments,
   }, { fetchImpl });
   if (!result.ok) return { status: result.status || 400, body: { error: result.error || 'Could not file that email.' } };
   console.log(`[resend] inbound id=${result.lead_id} duplicate=${result.duplicate ? 'yes' : 'no'}`);

@@ -261,20 +261,30 @@ function addTimeline(id, event) {
     if (prior) return { ok: true, duplicate: true, lead: prior };
   }
   const at = event.at || new Date().toISOString();
+  const kind = ['email', 'sms', 'note'].includes(event.kind) ? event.kind : 'note';
+  const rawBody = clipMulti(event.body, 8000);
+  const stripped = event.skipStrip || kind === 'note' ? { clean: rawBody, full: rawBody } : require('./thread').stripQuoted(rawBody);
+  const body = clipMulti(stripped.clean, 4000);
+  const bodyFull = stripped.full && stripped.full !== stripped.clean ? clipMulti(stripped.full, 8000) : '';
   const item = {
     id: crypto.randomBytes(4).toString('hex'),
     at,
-    kind: ['email', 'sms', 'note'].includes(event.kind) ? event.kind : 'note',
+    kind,
     direction: event.direction === 'in' || event.direction === 'out' ? event.direction : '',
     subject: clip(event.subject, 200),
-    body: clipMulti(event.body, 4000),
+    body,
+    bodyFull,
     ai: !!event.ai,
+    system: !!event.system,
     externalId,
     messageId,
+    attachments: require('./thread').attachmentList(event.attachments),
   };
-  if (!item.body && !item.subject) return { ok: false, status: 400, error: 'That message was empty.' };
+  if (!item.body && !item.subject && !item.attachments.length) return { ok: false, status: 400, error: 'That message was empty.' };
   timeline.push(item);
-  const saved = store.update('leads', id, { timeline: timeline.slice(-300) });
+  const patch = { timeline: timeline.slice(-300) };
+  if (item.direction === 'in' && kind !== 'note' && !event.skipUnread) patch.unread = true;
+  const saved = store.update('leads', id, patch);
   return saved ? { ok: true, duplicate: false, lead: saved, item } : { ok: false, status: 404, error: 'That lead was not found.' };
 }
 
@@ -339,6 +349,69 @@ function findByPhone(phone) {
   const matches = all().filter((r) => phoneUtil.phonesMatch(r.phone, phone));
   matches.sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
   return matches[0] || null;
+}
+
+function mostRecent(rows) {
+  return rows.slice().sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))[0] || null;
+}
+
+function matchLead({ leadId = '', email = '', phone = '' } = {}) {
+  if (leadId) {
+    const tagged = findLoose(leadId);
+    if (tagged) return tagged;
+  }
+  const emailNeedle = String(email || '').trim().toLowerCase();
+  const emailRows = emailNeedle ? all().filter((row) => String(row.email || '').toLowerCase() === emailNeedle) : [];
+  const phoneUtil = require('./phone');
+  const phoneRows = phone ? all().filter((row) => phoneUtil.phonesMatch(row.phone, phone)) : [];
+  const open = (rows) => rows.filter((row) => row.status !== 'Closed' && row.status !== 'Lost');
+  if (open(emailRows).length) return mostRecent(open(emailRows));
+  if (open(phoneRows).length) return mostRecent(open(phoneRows));
+  if (emailRows.length) return mostRecent(emailRows);
+  if (phoneRows.length) return mostRecent(phoneRows);
+  return null;
+}
+
+function ensureThread(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  const origin = `origin:${lead.id}`;
+  const hasOrigin = (lead.timeline || []).some((item) => item.externalId === origin);
+  if (!hasOrigin && String(lead.message || '').trim()) {
+    addTimeline(lead.id, {
+      kind: lead.source === 'sms' ? 'sms' : 'email',
+      direction: 'in',
+      subject: lead.source === 'website' ? 'Quote request' : '',
+      body: lead.message,
+      at: lead.createdAt || new Date().toISOString(),
+      externalId: origin,
+      skipUnread: true,
+    });
+  }
+  return find(id);
+}
+
+function ensureAllThreads() {
+  for (const lead of all()) ensureThread(lead.id);
+}
+
+function threadItems(lead) {
+  const items = conversation(lead).slice().reverse();
+  return items;
+}
+
+function lastSnippet(lead) {
+  const items = threadItems(lead).filter((item) => item.kind === 'email' || item.kind === 'sms');
+  const last = items[items.length - 1];
+  if (!last) return '';
+  const who = last.direction === 'out' ? 'You: ' : '';
+  return `${who}${String(last.body || last.subject || '').replace(/\s+/g, ' ').trim()}`.slice(0, 90);
+}
+
+function threadStamp(lead) {
+  const items = threadItems(lead);
+  const last = items[items.length - 1];
+  return `${items.length}:${last ? last.at : ''}`;
 }
 
 function conversation(lead) {
@@ -411,7 +484,18 @@ function closeLead(id, { reason = '', by = 'owner', blankOk = false } = {}) {
     patch.statusBeforeClose = lead.status || 'New';
     patch.aiAutoReplyBeforeClose = !!lead.aiAutoReply;
   }
-  return store.update('leads', id, patch);
+  const saved = store.update('leads', id, patch);
+  if (saved) {
+    addTimeline(id, {
+      kind: 'note',
+      system: true,
+      body: `Closed${saved.closedReason ? `: ${saved.closedReason}` : ''}`,
+      externalId: `sys:close:${saved.closedAt}`,
+      skipUnread: true,
+      skipStrip: true,
+    });
+  }
+  return find(id);
 }
 
 function undoClose(id) {
@@ -421,7 +505,7 @@ function undoClose(id) {
   const previous = STATUSES.includes(lead.statusBeforeClose) && lead.statusBeforeClose !== 'Closed' && lead.statusBeforeClose !== 'Lost'
     ? lead.statusBeforeClose
     : 'Contacted';
-  return store.update('leads', id, {
+  const saved = store.update('leads', id, {
     status: previous,
     closedReason: '',
     closedAt: '',
@@ -430,13 +514,17 @@ function undoClose(id) {
     aiAutoReply: lead.aiAutoReplyBeforeClose === true,
     aiAutoReplyBeforeClose: false,
   });
+  if (saved) {
+    addTimeline(id, { kind: 'note', system: true, body: 'Reopened', externalId: `sys:undo:${saved.updatedAt}`, skipUnread: true, skipStrip: true });
+  }
+  return find(id);
 }
 
 function reopenLead(id) {
   const lead = all().find((row) => row.id === id);
   if (!lead) return null;
   const now = new Date().toISOString();
-  return store.update('leads', id, {
+  const saved = store.update('leads', id, {
     status: 'Contacted',
     closedReason: '',
     closedAt: '',
@@ -444,13 +532,20 @@ function reopenLead(id) {
     reopenedAt: now,
     openedAt: lead.openedAt || now,
   });
+  if (saved) {
+    addTimeline(id, { kind: 'note', system: true, body: 'Reopened', externalId: `sys:reopen:${now}`, skipUnread: true, skipStrip: true });
+  }
+  return find(id);
 }
 
 function markOpened(id) {
   const lead = all().find((row) => row.id === id);
   if (!lead) return null;
-  if (lead.openedAt) return lead;
-  return store.update('leads', id, { openedAt: new Date().toISOString() });
+  const patch = {};
+  if (!lead.openedAt) patch.openedAt = new Date().toISOString();
+  if (lead.unread) patch.unread = false;
+  if (!Object.keys(patch).length) return lead;
+  return store.update('leads', id, patch);
 }
 
 function replyChannel(lead, requested) {
@@ -617,5 +712,6 @@ module.exports = {
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
   hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose,
-  findByMessageId, findLoose, messageKey, needsAttention, attentionCount,
+  findByMessageId, findLoose, messageKey, needsAttention, attentionCount, matchLead, ensureThread, ensureAllThreads,
+  threadItems, lastSnippet, threadStamp,
 };
