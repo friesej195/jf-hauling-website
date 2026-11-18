@@ -489,6 +489,33 @@ function folderOf(lead) {
   return 'new';
 }
 
+function rememberUndo(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  return store.update('leads', id, {
+    moveUndo: {
+      status: lead.status || 'New',
+      manualFolder: lead.manualFolder || '',
+      markedRepliedAt: lead.markedRepliedAt || '',
+      jobDate: lead.jobDate || '',
+      statusBeforeSchedule: lead.statusBeforeSchedule || '',
+      closedReason: lead.closedReason || '',
+      closedAt: lead.closedAt || '',
+      closedBy: lead.closedBy || '',
+      statusBeforeClose: lead.statusBeforeClose || '',
+      aiAutoReply: lead.aiAutoReply === true,
+      aiAutoReplyBeforeClose: lead.aiAutoReplyBeforeClose === true,
+      reopenedAt: lead.reopenedAt || '',
+    },
+  });
+}
+
+function undoMove(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead || !lead.moveUndo || !lead.moveUndo.status) return lead;
+  return store.update('leads', id, { ...lead.moveUndo, moveUndo: {} });
+}
+
 function setReplyFolder(id, folder) {
   const lead = all().find((row) => row.id === id);
   if (!lead) return null;
@@ -802,7 +829,7 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
-  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose, setReplyFolder, scheduleLead, unscheduleLead, latestUnansweredReplyAt,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead, undoClose, setReplyFolder, scheduleLead, unscheduleLead, latestUnansweredReplyAt, rememberUndo, undoMove,
   findByMessageId, findLoose, messageKey, needsAttention, attentionCount, matchLead, ensureThread, ensureAllThreads,
   threadItems, lastSnippet, threadStamp,
 };
