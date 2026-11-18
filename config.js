@@ -137,9 +137,12 @@ module.exports = {
     defaultFrom: 'JF Hauling Website <quotes@jfhauling.ca>',
     // Copy of each CRM customer email. Default is the Outlook inbox. "-" turns the copy off.
     crmBcc: env('CRM_EMAIL_BCC', OWNER_EMAIL),
+    // Extra Reply-To on customer mail, such as quotes@reply.jfhauling.ca. Blank keeps Reply-To as the Outlook inbox only.
+    replyToInbound: env('CRM_REPLY_TO_INBOUND', ''),
   },
   resend: {
     apiKey: env('RESEND_API_KEY', ''),
+    inboundWebhookSecret: env('RESEND_INBOUND_WEBHOOK_SECRET', ''),
   },
   smtp: {
     host: env('SMTP_HOST', ''),

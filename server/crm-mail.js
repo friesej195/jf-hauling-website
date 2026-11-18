@@ -53,6 +53,7 @@ async function sendLeadEmail({ lead, to, subject, body, ai = false, fetchImpl } 
     inReplyTo: thread.inReplyTo,
     references: thread.references,
     reference: lead.id,
+    replyTo: mailer.customerReplyList(lead),
     fetchImpl,
   });
   if (!sent.ok) return { ok: false, error: sent.error === 'off' ? 'mail-off' : 'mail-send' };

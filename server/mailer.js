@@ -54,6 +54,21 @@ function crmFrom() {
   return guard.customerFrom(fromAddress(), 'MAIL_FROM');
 }
 
+function customerReplyList(lead) {
+  const configured = String(config.mail.replyToInbound || '').trim();
+  const addr = addressOnly(configured).toLowerCase();
+  if (!configured || configured === '-' || guard.blocked(configured) || !addr.includes('@')) {
+    if (configured && guard.blocked(configured)) console.warn('[mailer] refused customer-visible address var=CRM_REPLY_TO_INBOUND');
+    return guard.customerReplyTo(config.business.email, 'EMAIL');
+  }
+  const at = addr.indexOf('@');
+  const local = addr.slice(0, at);
+  const domain = addr.slice(at + 1);
+  const id = lead && lead.id ? String(lead.id).replace(/[^A-Za-z0-9-]/g, '') : '';
+  const tagged = id ? `${local}+${id}@${domain}` : addr;
+  return [`JF Hauling <${tagged}>`, guard.SAFE_REPLY];
+}
+
 async function sendResend(message, fetchImpl = fetch) {
   const to = Array.isArray(message.to) ? message.to : [message.to];
   const payload = { from: message.from, to, subject: message.subject, text: message.text };
@@ -109,10 +124,10 @@ async function notify(subject, text, opts = {}) {
   }
 }
 
-async function sendCustomer({ to, subject, text, messageId, inReplyTo, references, reference, fetchImpl } = {}) {
+async function sendCustomer({ to, subject, text, messageId, inReplyTo, references, reference, replyTo: requestedReply, fetchImpl } = {}) {
   const active = mode();
   if (active === 'off') return { ok: false, error: 'off' };
-  const replyTo = guard.customerReplyTo(config.business.email, 'EMAIL');
+  const replyTo = requestedReply || customerReplyList();
   const bcc = guard.customerBcc(config.mail.crmBcc, 'CRM_EMAIL_BCC');
   const headers = guard.cleanHeaders({
     ...(messageId ? { 'Message-ID': messageId } : {}),
@@ -151,6 +166,7 @@ module.exports = {
   notify,
   sendCustomer,
   crmFrom,
+  customerReplyList,
   mode,
   enabled: () => mode() !== 'off' && !!config.mail.notifyTo,
 };

@@ -114,7 +114,7 @@ Outbound texts from the lead page use the lead’s phone, normalized to `+1` whe
 
 ## 4. Folders and replies
 
-The list has three folders:
+The list has four folders:
 
 - **New** — not opened yet
 - **Opened** — you opened the quote and have not sent an email or a text yet
@@ -123,11 +123,32 @@ The list has three folders:
 
 A clear “no thanks”, “went with someone else”, or “please stop” on an inbound email or text is classified by OpenAI. The lead is closed only when the model returns `not_interested` with confidence at least 0.8. The customer message is treated as untrusted and the model may return only JSON. If OpenAI is unset or fails, the lead is left as it is, and no automatic reply is sent for a message that just closed the lead. A later message that clearly wants the haul reopens it into Opened. The phone gets `Closed: Jane D. - too expensive` or `Reopened: Jane D.`
 
-`POST /api/leads/<id>/close` with `{ "reason": "Not interested" }` and `POST /api/leads/<id>/reopen` use the same bearer token. On the lead, **More** has Close, and a closed lead shows **Closed by AI: reason** with Reopen.
+`POST /api/leads/<id>/close` with `{ "reason": "Not interested" }` and `POST /api/leads/<id>/reopen` use the same bearer token. On a lead, **Move to Closed** is at the top. It opens a sheet with optional reasons (Not interested, Went with someone else, Too expensive, Duplicate/spam, Other) and **Confirm**. In the list, swipe a row left or tap **⋯** and choose **Close**. **Undo** stays on screen for 5 seconds and puts the lead back. A closed lead shows **Closed by AI: reason** or **Closed: reason**, with **Reopen** in place of Move to Closed. Closing records `closedBy` as `owner`.
 
 Opening a lead records that visit. Sending moves it to Replied. The status list (New, Contacted, Quoted, Booked, Lost) is unchanged.
 
 On a lead, choose **Email** or **Text**, then **Draft with AI** or **Send**. A channel is greyed out when the lead has no address or no phone. AI auto-reply, status, and the note box are under **More**.
+
+## Receiving replies on reply.jfhauling.ca
+
+Leave the MX records on `jfhauling.ca` alone. Namecheap email forwarding for the root domain stays as it is. Receiving uses the subdomain `reply.jfhauling.ca` only. Until `CRM_REPLY_TO_INBOUND` is set, customer mail still uses Reply-To `jfhauling@outlook.com` and nothing else changes.
+
+1. In Resend, open **Domains** and add `reply.jfhauling.ca`. Add the verification records Resend shows (DKIM, and SPF if you leave sending on). You can turn **Enable Sending** off if this subdomain only receives.
+2. On that domain’s page, turn on **Receiving**. Resend shows the MX record to add. Copy that value. It is account-specific. The dashboard may show `receive.forge.rmta.net`, a regional host such as `receive-euw1.forge.rmta.net`, or `inbound-smtp.<region>.amazonaws.com`. Use the value on your domain page, not a guess.
+3. In Namecheap, open **Domain List → jfhauling.ca → Advanced DNS → Add New Record**:
+   - Type: **MX Record**
+   - Host: `reply`
+   - Value: the host Resend shows
+   - Priority: the priority Resend shows (usually 10)
+   Do not edit the MX records whose host is `@`.
+4. Back in Resend, click **I've added the record** and wait until receiving shows verified.
+5. Open **Webhooks → Add Webhook**. Endpoint: `https://jfhauling.ca/api/resend/inbound`. Event: `email.received`. Copy the signing secret.
+6. Set these on the host (not in git):
+   - `RESEND_INBOUND_WEBHOOK_SECRET` = the `whsec_...` signing secret
+   - `CRM_REPLY_TO_INBOUND` = `quotes@reply.jfhauling.ca`
+   `RESEND_API_KEY` must already be set. The webhook does not use `CRM_API_TOKEN`. A missing or wrong secret is rejected.
+
+After `CRM_REPLY_TO_INBOUND` is set, each customer email uses both Reply-To addresses: `JF Hauling <quotes+<lead id>@reply.jfhauling.ca>` and `jfhauling@outlook.com`. A reply to the plus address is filed on that lead immediately. A reply that only reaches Outlook is still picked up by the Outlook check. The same internet message id is stored once, so the webhook and a later Outlook sync do not file it twice. The same not-interested check and guarded auto-reply run as for `POST /api/leads/inbound-email`.
 
 ## 5. Leads waiting for a reply
 
@@ -172,7 +193,9 @@ iPhone (iOS 16.4 or newer):
 4. Tap **Enable notifications** and allow them.
 5. **Send test notification** in Settings checks that this phone received it.
 
-Android: open the CRM, Add to Home Screen or just use Chrome, then tap **Enable notifications**.
+The home-screen icon shows a number for leads that need attention: unopened New leads, plus any lead whose latest customer message has no reply after it. Booked, Lost, and Closed leads are not counted. The number updates when you open the CRM and when a notification arrives. On iPhone this badge only works in the installed home-screen app (iOS 16.4 or newer) after notifications are allowed. If the phone does not support the badge, nothing else changes.
+
+Android: open the CRM, Add to Home Screen or just use Chrome, then tap **Enable notifications**. Chrome can show the same icon badge.
 
 A new website quote, a new email lead, a new text lead, and a later email or text from a customer each send a short notification, for example `New quote: Jane D. - 20 ft container, Listowel to Barrie`. A lead typed in by hand does not.
 

@@ -16,6 +16,9 @@
     "test:mailcrm": "node tests/crm-mail.js",
     "test:inbox": "node tests/crm-inbox.js",
     "test:close": "node tests/crm-close.js",
+    "test:close-ui": "node tests/crm-close-ui.js",
+    "test:badge": "node tests/crm-badge.js",
+    "test:resend": "node tests/crm-resend-inbound.js",
     "test:reviews": "node tests/reviews.js"
   },
   "keywords": [],

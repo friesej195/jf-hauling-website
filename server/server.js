@@ -20,7 +20,12 @@ const push = require('./push');
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '50kb' }));
+app.use(express.json({
+  limit: '50kb',
+  verify(req, _res, buf) {
+    if (String(req.originalUrl || '').split('?')[0] === '/api/resend/inbound') req.rawBody = buf.toString('utf8');
+  },
+}));
 app.use(express.urlencoded({ extended: false, limit: '50kb' }));
 app.use((req, res, next) => {
   res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' });
