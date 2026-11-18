@@ -112,6 +112,69 @@ Outbound texts from the lead page use the lead’s phone, normalized to `+1` whe
    - If the customer asks to speak to a person, complains, or mentions payment or cancellation, auto-reply turns off for that lead and the lead is flagged **Needs Johan**.
    - The reply does not promise a firm price, date, or availability. It points people at `https://jfhauling.ca/quote` and says Johan or the dispatcher will confirm. Shed mule pricing is “check with the dispatcher”.
 
-## 4. Inbox job
+## 4. Folders and replies
+
+The list has three folders:
+
+- **New** — not opened yet
+- **Opened** — you opened the quote and have not sent an email or a text yet
+- **Replied** — at least one email or text went out (including an AI reply)
+
+Opening a lead records that visit. Sending moves it to Replied. The status list (New, Contacted, Quoted, Booked, Lost) is unchanged.
+
+On a lead, choose **Email** or **Text**, then **Draft with AI** or **Send**. A channel is greyed out when the lead has no address or no phone. AI auto-reply, status, and the note box are under **More**.
+
+## 5. Leads waiting for a reply
+
+`GET /api/leads/needs-reply` uses the same bearer token. A lead is waiting when the latest customer event (the quote or lead being created, or a later inbound email or text) has no outbound email or text after it.
+
+- `?minutes=30` (the default) returns those that have been waiting at least that many minutes.
+- `?since=2026-11-17T12:00:00.000Z` returns every lead still waiting whose wait started at or after that time. `minutes` is ignored when `since` is set.
+- Booked and Lost leads are left out.
+
+```json
+{
+  "now": "2026-11-17T22:00:00.000Z",
+  "leads": [{
+    "id": "L-261117-AB12",
+    "name": "Jane Tester",
+    "phone": "519-555-0100",
+    "email": "jane@example.ca",
+    "source": "website",
+    "folder": "opened",
+    "waitingSince": "2026-11-17T20:00:00.000Z",
+    "waitingMinutes": 120,
+    "lastInboundChannel": "quote",
+    "lastInboundPreview": "Tailgate needed",
+    "crmUrl": "https://jfhauling.ca/crm/lead/L-261117-AB12"
+  }]
+}
+```
+
+`lastInboundChannel` is `quote`, `lead`, `email`, or `sms`.
+
+`POST /api/notify` with `{ "title": "Still waiting", "body": "3 quotes need a reply", "leadId": "L-261117-AB12" }` pushes that text to every phone that enabled notifications. `leadId` is optional. Same bearer token.
+
+## 6. Notifications on the phone
+
+The server creates VAPID keys on the data disk the first time it starts if `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are not set. You do not have to generate them. Optional env vars: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (default `mailto:jfhauling@outlook.com`). The private key is never written to the logs.
+
+iPhone (iOS 16.4 or newer):
+
+1. Open `https://jfhauling.ca/crm` in Safari and sign in.
+2. Share → **Add to Home Screen**.
+3. Open **JF Leads** from the home-screen icon (not from the Safari tab).
+4. Tap **Enable notifications** and allow them.
+5. **Send test notification** in Settings checks that this phone received it.
+
+Android: open the CRM, Add to Home Screen or just use Chrome, then tap **Enable notifications**.
+
+A new website quote, a new email lead, a new text lead, and a later email or text from a customer each send a short notification, for example `New quote: Jane D. - 20 ft container, Listowel to Barrie`. A lead typed in by hand does not.
+
+## 7. What the customer sees on a reply
+
+Customer mail is always From `JF Hauling <quotes@jfhauling.ca>` and Reply-To `jfhauling@outlook.com`. A BCC copy goes to `jfhauling@outlook.com` unless `CRM_EMAIL_BCC` says otherwise. Any From, Reply-To, or BCC that contains `grokbot` or `friesenj195` is refused. Those strings are not in this project. If a customer ever saw `friesenj195-9bzrhn@mail.grokbot.com`, it was coming from a Render env var, not from the site code. Check these values in the Dashboard (do not paste them into chat): `MAIL_FROM`, `SMTP_FROM`, `SMTP_USER`, `EMAIL`, `CRM_EMAIL_BCC`, and `NOTIFY_TO`. `NOTIFY_TO` only receives dispatch alerts. `MAIL_FROM` was the From address on quote alerts and, before this change, the address inside CRM From.
+
+## 8. Inbox job
 
 The website does not read the Outlook mailbox. An external job that can read that inbox posts each message to `POST /api/leads/inbound-email` with `CRM_API_TOKEN`. `GET /api/leads/known-emails` lists the addresses already on leads. `POST /api/leads` still creates a lead by hand from another system.

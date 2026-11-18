@@ -69,6 +69,11 @@ async function receive(raw, { fetchImpl } = {}) {
   });
   if (!filed.ok) return { ok: false, status: filed.status || 400, error: filed.error };
   leads.touchContact(lead.id, at);
+  if (!filed.duplicate) {
+    const push = require('./push');
+    const notice = created ? push.notifyNewLead(lead) : push.notifyInbound(lead, 'email', bodyText || subject);
+    notice.catch(() => console.error(`[push] failed id=${lead.id}`));
+  }
 
   let autoReplied = false;
   const fresh = leads.find(lead.id);

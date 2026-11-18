@@ -33,7 +33,8 @@ async function sendSms({ to, body, fetchImpl = fetch }) {
   const dest = phone.toE164(to);
   const from = phone.toE164(config.twilio.fromNumber);
   if (!dest || !from) return { ok: false, error: 'no-phone' };
-  const payload = new URLSearchParams({ To: dest, From: from, Body: String(body || '').slice(0, 1000) });
+  const guard = require('./address-guard');
+  const payload = new URLSearchParams({ To: dest, From: from, Body: guard.stripBlocked(body).slice(0, 1000) });
   const res = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(config.twilio.accountSid)}/Messages.json`, {
     method: 'POST',
     headers: {
@@ -79,6 +80,11 @@ async function ingestInbound({ from, body, messageSid }) {
     externalId: sid,
   });
   if (!added || added.duplicate) return { ok: true, duplicate: true, lead };
+  try {
+    const push = require('./push');
+    const notice = isNew ? push.notifyNewLead(lead) : push.notifyInbound(lead, 'sms', text);
+    notice.catch(() => console.error(`[push] failed id=${lead.id}`));
+  } catch { /* push is optional */ }
   if (!isNew) {
     try {
       const ai = require('./ai-reply');

@@ -15,6 +15,7 @@ const crm = require('./crm');
 const outlook = require('./outlook');
 const twilioSms = require('./twilio');
 const aiReply = require('./ai-reply');
+const push = require('./push');
 
 const app = express();
 app.disable('x-powered-by');
@@ -194,7 +195,10 @@ async function saveQuote(s) {
   try {
     const savedLead = leads.createFromQuote(rec);
     if (!savedLead.ok) console.error(`[leads] failed quote=${id} error=${savedLead.error}`);
-    else if (!savedLead.duplicate) console.log(`[leads] created id=${savedLead.lead.id} source=website quote=${id}`);
+    else if (!savedLead.duplicate) {
+      console.log(`[leads] created id=${savedLead.lead.id} source=website quote=${id}`);
+      push.notifyNewLead(savedLead.lead).catch(() => console.error(`[push] failed id=${savedLead.lead.id}`));
+    }
   } catch (err) {
     console.error(`[leads] failed quote=${id} error=${err && err.message ? String(err.message).replace(/[\r\n]/g, ' ').slice(0, 180) : 'save failed'}`);
   }
@@ -281,4 +285,5 @@ if (!config.server.crmPassword) console.warn('⚠  CRM_PASSWORD is not set — /
 if (!config.server.crmApiToken) console.warn('⚠  CRM_API_TOKEN is not set — POST /api/leads is disabled.');
 console.log(`[crm] outlook=${outlook.configured() ? (outlook.connected() ? 'connected' : 'ready') : 'off'} twilio=${twilioSms.configured() ? 'ready' : 'off'} ai=${aiReply.keySet() ? 'ready' : 'off'}`);
 outlook.startInboxPoll();
+try { push.ensureKeys(); } catch (err) { console.error('[push] unavailable'); }
 app.listen(config.server.port, () => console.log(`${B.name} site running on http://localhost:${config.server.port} (assistant mode: ${llm.enabled() ? 'AI + guided' : 'guided'})`));
