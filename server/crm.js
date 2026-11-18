@@ -148,7 +148,7 @@ h2{font-size:1rem;margin:0 0 8px}
 .pill.Contacted{background:#e7eef8;color:#1e3a5f}
 .pill.Quoted{background:#fff4d6;color:#6a4b00}
 .pill.Booked{background:#e5f6ec;color:#146c3a}
-.pill.Lost{background:#ececee;color:#5d6168}
+.pill.Lost,.pill.Closed{background:#ececee;color:#5d6168}
 .dueflag{color:#8a4b08;font-weight:800;font-size:.86rem}
 .overdue{color:#9b2c2c}
 .filters{display:grid;gap:8px;margin-bottom:12px}
@@ -193,8 +193,8 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .switch input{width:1.3rem;height:1.3rem}
 .draft-status{min-height:1.2em}
 .panel .btn{margin-top:8px}
-.folders{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px}
-.folders a{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:12px;background:#fff;border:1.5px solid #e4e5e7;text-decoration:none;font-weight:800;font-size:.92rem;color:var(--ink)}
+.folders{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 12px}
+.folders a{display:flex;align-items:center;justify-content:center;gap:4px;min-height:48px;border-radius:12px;background:#fff;border:1.5px solid #e4e5e7;text-decoration:none;font-weight:800;font-size:.78rem;color:var(--ink);padding:4px}
 .folders a.on{background:#2A2D32;color:#fff;border-color:#2A2D32}
 .folders a.on .badge{background:#F6B913;color:#2A2D32}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -349,7 +349,7 @@ function folderTabs(active, q) {
     return `/crm/?${params}`;
   };
   const tab = (folder, label) => `<a href="${href(folder)}" class="${active === folder ? 'on' : ''}" ${active === folder ? 'aria-current="page"' : ''}>${label} <span class="badge">${counts[folder]}</span></a>`;
-  return `<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}</nav>`;
+  return `<nav class="folders" aria-label="Folders">${tab('new', 'New')}${tab('opened', 'Opened')}${tab('replied', 'Replied')}${tab('closed', 'Closed')}</nav>`;
 }
 
 function leadCard(lead, today) {
@@ -358,7 +358,7 @@ function leadCard(lead, today) {
   const bits = [lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · ');
   const tel = leads.telHref(lead.phone);
   let due = '';
-  if (lead.followUpDate && lead.status !== 'Booked' && lead.status !== 'Lost') {
+  if (lead.followUpDate && lead.status !== 'Booked' && lead.status !== 'Lost' && lead.status !== 'Closed') {
     if (lead.followUpDate < today) due = `<div class="dueflag overdue">Overdue · ${esc(fmtDay(lead.followUpDate))}</div>`;
     else if (lead.followUpDate === today) due = '<div class="dueflag">Due today</div>';
     else due = `<div class="dueflag">Follow up ${esc(fmtDay(lead.followUpDate))}</div>`;
@@ -376,10 +376,10 @@ function leadCard(lead, today) {
 }
 
 function listPage(req, res, { dueOnly }) {
-  const folder = ['new', 'opened', 'replied'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
+  const folder = ['new', 'opened', 'replied', 'closed'].includes(String(req.query.folder || '')) ? String(req.query.folder) : 'new';
   const q = { status: String(req.query.status || ''), source: String(req.query.source || ''), q: String(req.query.q || ''), folder: dueOnly ? '' : folder };
   const { rows, today } = leads.query({ ...q, dueOnly, folder: q.folder });
-  const title = dueOnly ? 'Follow-ups' : (folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : 'New');
+  const title = dueOnly ? 'Follow-ups' : (folder === 'opened' ? 'Opened' : folder === 'replied' ? 'Replied' : folder === 'closed' ? 'Closed' : 'New');
   const narrowed = q.status || q.source || q.q;
   const empty = dueOnly
     ? 'No follow-ups due. Set a follow-up date on a lead and it will show up here until the job is booked or lost.'
@@ -387,6 +387,8 @@ function listPage(req, res, { dueOnly }) {
       ? 'No opened quotes waiting for a reply.'
       : folder === 'replied'
         ? 'No quotes you have replied to yet.'
+        : folder === 'closed'
+          ? 'No closed quotes.'
         : narrowed
           ? 'No leads match.'
           : 'No new quotes. Website quotes land here until you open them.';
@@ -540,6 +542,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
   const main = `
     ${flash(req)}
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
+    ${(lead.status === 'Closed' || lead.status === 'Lost') ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p><form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}">` : ''}${(lead.status === 'Closed' || lead.status === 'Lost') ? '<button class="btn btn-yellow" type="submit">Reopen</button></form>' : ''}
     <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
     ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
     <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
@@ -555,6 +558,7 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
       <button class="btn btn-dark" type="submit">Save auto-reply</button>
     </form>
     ${lead.needsJohan ? `<form method="post" action="/crm/lead/${esc(lead.id)}/ai"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="clearJohan" value="1"><button class="btn btn-line" type="submit">Clear Needs Johan</button></form>` : ''}
+    ${lead.status === 'Closed' || lead.status === 'Lost' ? '' : `<form method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${csrf}"><label>Close reason<input name="reason" maxlength="200" placeholder="Not interested"></label><button class="btn btn-line" type="submit">Close</button></form>`}
     <form method="post" action="/crm/lead/${esc(lead.id)}">
       <input type="hidden" name="_csrf" value="${csrf}">
       <div class="panel">
@@ -849,6 +853,23 @@ function mount(app) {
     if (!Number.isFinite(minutes) || minutes < 0) return res.status(400).json({ error: 'minutes must be a number.' });
     res.json(leads.needsReply({ minutes, since }));
   });
+  app.post('/api/leads/:id/close', (req, res) => {
+    privateHeaders(res);
+    const auth = bearerOk(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    const reason = String((req.body && req.body.reason) || '').trim().slice(0, 200);
+    const saved = leads.closeLead(req.params.id, { reason: reason || 'Closed', by: 'owner' });
+    if (!saved) return res.status(404).json({ error: 'That lead was not found.' });
+    res.json({ ok: true, id: saved.id, status: saved.status, folder: leads.folderOf(saved), closedReason: saved.closedReason, closedBy: saved.closedBy });
+  });
+  app.post('/api/leads/:id/reopen', (req, res) => {
+    privateHeaders(res);
+    const auth = bearerOk(req);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
+    const saved = leads.reopenLead(req.params.id);
+    if (!saved) return res.status(404).json({ error: 'That lead was not found.' });
+    res.json({ ok: true, id: saved.id, status: saved.status, folder: leads.folderOf(saved) });
+  });
   app.post('/api/notify', async (req, res) => {
     privateHeaders(res);
     const auth = bearerOk(req);
@@ -974,6 +995,18 @@ function mount(app) {
     }
     leads.setFlags(lead.id, { aiAutoReply: req.body && req.body.aiAutoReply === '1' });
     res.redirect(303, `/crm/lead/${lead.id}?sent=ai`);
+  });
+  app.post('/crm/lead/:id/close', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.closeLead(lead.id, { reason: String((req.body && req.body.reason) || 'Closed by owner'), by: 'owner' });
+    res.redirect(303, `/crm/lead/${lead.id}?saved=1`);
+  });
+  app.post('/crm/lead/:id/reopen', requireSession, requireCsrf, (req, res) => {
+    const lead = leads.find(req.params.id);
+    if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
+    leads.reopenLead(lead.id);
+    res.redirect(303, `/crm/lead/${lead.id}?saved=1`);
   });
   app.post('/crm/lead/:id/reply', requireSession, requireCsrf, async (req, res) => {
     const lead = leads.find(req.params.id);

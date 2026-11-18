@@ -5,8 +5,8 @@ const store = require('./store');
 
 const SOURCES = ['website', 'email', 'phone', 'sms', 'other'];
 const EXTERNAL_MAX = 512;
-const STATUSES = ['New', 'Contacted', 'Quoted', 'Booked', 'Lost'];
-const CLOSED = new Set(['Booked', 'Lost']);
+const STATUSES = ['New', 'Contacted', 'Quoted', 'Booked', 'Lost', 'Closed'];
+const CLOSED = new Set(['Booked', 'Lost', 'Closed']);
 
 function all() {
   const rows = store.readAll('leads');
@@ -66,7 +66,7 @@ function cleanInput(raw, { defaultSource = 'phone' } = {}) {
   const source = clip(text(src.source), 20) || defaultSource;
   if (!SOURCES.includes(source)) return { error: 'Source must be website, email, phone, or other.' };
   const status = clip(text(src.status), 20) || 'New';
-  if (!STATUSES.includes(status)) return { error: 'Status must be New, Contacted, Quoted, Booked, or Lost.' };
+  if (!STATUSES.includes(status)) return { error: 'Status must be New, Contacted, Quoted, Booked, Lost, or Closed.' };
   const followRaw = clip(text(src.followUpDate), 20);
   const followUpDate = normDate(followRaw);
   if (followRaw && followUpDate == null) return { error: 'Follow-up date must be a real calendar date.' };
@@ -343,15 +343,49 @@ function hasOutbound(lead) {
 }
 
 function folderOf(lead) {
+  if (!lead) return 'new';
+  if (lead.status === 'Closed' || lead.status === 'Lost') return 'closed';
+  if (lead.reopenedAt && !outboundAfter(lead, lead.reopenedAt)) return 'opened';
   if (hasOutbound(lead)) return 'replied';
-  if (lead && lead.openedAt) return 'opened';
+  if (lead.openedAt) return 'opened';
   return 'new';
 }
 
+function outboundAfter(lead, at) {
+  if (!at) return hasOutbound(lead);
+  return (lead.timeline || []).some((item) => (item.kind === 'email' || item.kind === 'sms') && item.direction === 'out' && String(item.at) > String(at));
+}
+
 function folderCounts() {
-  const counts = { new: 0, opened: 0, replied: 0 };
+  const counts = { new: 0, opened: 0, replied: 0, closed: 0 };
   for (const lead of all()) counts[folderOf(lead)] += 1;
   return counts;
+}
+
+function closeLead(id, { reason = '', by = 'owner' } = {}) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  return store.update('leads', id, {
+    status: 'Closed',
+    closedReason: String(reason || 'Not interested').replace(/\s+/g, ' ').trim().slice(0, 200),
+    closedAt: new Date().toISOString(),
+    closedBy: by === 'ai' ? 'ai' : 'owner',
+    aiAutoReply: false,
+  });
+}
+
+function reopenLead(id) {
+  const lead = all().find((row) => row.id === id);
+  if (!lead) return null;
+  const now = new Date().toISOString();
+  return store.update('leads', id, {
+    status: 'Contacted',
+    closedReason: '',
+    closedAt: '',
+    closedBy: '',
+    reopenedAt: now,
+    openedAt: lead.openedAt || now,
+  });
 }
 
 function markOpened(id) {
@@ -397,7 +431,7 @@ function latestOutboundAt(lead) {
 }
 
 function awaitingReply(lead) {
-  if (!lead || lead.status === 'Lost' || lead.status === 'Booked') return null;
+  if (!lead || lead.status === 'Lost' || lead.status === 'Closed' || lead.status === 'Booked') return null;
   const events = customerEvents(lead);
   if (!events.length) return null;
   const last = events[events.length - 1];
@@ -457,7 +491,7 @@ function query({ status = '', source = '', q = '', dueOnly = false, folder = '' 
   }
   if (status && STATUSES.includes(status)) rows = rows.filter((r) => r.status === status);
   if (source && SOURCES.includes(source)) rows = rows.filter((r) => r.source === source);
-  if (folder === 'new' || folder === 'opened' || folder === 'replied') rows = rows.filter((r) => folderOf(r) === folder);
+  if (folder === 'new' || folder === 'opened' || folder === 'replied' || folder === 'closed') rows = rows.filter((r) => folderOf(r) === folder);
   const needle = String(q || '').trim().toLowerCase();
   if (needle) rows = rows.filter((r) => haystack(r).includes(needle));
   return { rows, today };
@@ -524,5 +558,5 @@ module.exports = {
   SOURCES, STATUSES, all, create, createFromQuote, update, query, dueCount, find, toCsv,
   telHref, mailHref, publicLead, isDue, todayToronto, quotePrice, quoteMessage,
   addTimeline, setFlags, touchContact, findByExternalId, findByEmail, findByPhone, conversation,
-  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply,
+  hasOutbound, folderOf, folderCounts, markOpened, replyChannel, needsReply, awaitingReply, closeLead, reopenLead,
 };

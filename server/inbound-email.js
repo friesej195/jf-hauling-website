@@ -69,15 +69,21 @@ async function receive(raw, { fetchImpl } = {}) {
   });
   if (!filed.ok) return { ok: false, status: filed.status || 400, error: filed.error };
   leads.touchContact(lead.id, at);
+  let closed = false;
   if (!filed.duplicate) {
-    const push = require('./push');
-    const notice = created ? push.notifyNewLead(lead) : push.notifyInbound(lead, 'email', bodyText || subject);
-    notice.catch(() => console.error(`[push] failed id=${lead.id}`));
+    const intent = require('./intent');
+    const decision = await intent.applyCustomerIntent(lead.id, [subject, bodyText].filter(Boolean).join('\n'), fetchImpl);
+    closed = !!decision.closed;
+    if (!closed && !decision.reopened) {
+      const push = require('./push');
+      const notice = created ? push.notifyNewLead(leads.find(lead.id) || lead) : push.notifyInbound(lead, 'email', bodyText || subject);
+      notice.catch(() => console.error(`[push] failed id=${lead.id}`));
+    }
   }
 
   let autoReplied = false;
   const fresh = leads.find(lead.id);
-  if (fresh && fresh.aiAutoReply && !filed.duplicate) {
+  if (!closed && fresh && fresh.aiAutoReply && !filed.duplicate) {
     const ai = require('./ai-reply');
     const result = await ai.handleAutoReply(fresh.id, {
       channel: 'email',

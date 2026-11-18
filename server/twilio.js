@@ -50,7 +50,7 @@ async function sendSms({ to, body, fetchImpl = fetch }) {
   return { ok: true, to: dest };
 }
 
-async function ingestInbound({ from, body, messageSid }) {
+async function ingestInbound({ from, body, messageSid, fetchImpl = fetch }) {
   const leads = require('./leads');
   const text = String(body || '').trim().slice(0, 1000);
   const sid = String(messageSid || '').trim().slice(0, 80);
@@ -80,15 +80,21 @@ async function ingestInbound({ from, body, messageSid }) {
     externalId: sid,
   });
   if (!added || added.duplicate) return { ok: true, duplicate: true, lead };
+  let closed = false;
   try {
-    const push = require('./push');
-    const notice = isNew ? push.notifyNewLead(lead) : push.notifyInbound(lead, 'sms', text);
-    notice.catch(() => console.error(`[push] failed id=${lead.id}`));
-  } catch { /* push is optional */ }
-  if (!isNew) {
+    const intent = require('./intent');
+    const decision = await intent.applyCustomerIntent(lead.id, text, fetchImpl);
+    closed = !!decision.closed;
+    if (!closed && !decision.reopened) {
+      const push = require('./push');
+      const notice = isNew ? push.notifyNewLead(leads.find(lead.id) || lead) : push.notifyInbound(lead, 'sms', text);
+      notice.catch(() => console.error(`[push] failed id=${lead.id}`));
+    }
+  } catch { /* intent and push are optional */ }
+  if (!closed && !isNew) {
     try {
       const ai = require('./ai-reply');
-      await ai.handleAutoReply(lead.id, { channel: 'sms', from: e164, text });
+      await ai.handleAutoReply(lead.id, { channel: 'sms', from: e164, text, fetchImpl });
     } catch {
       console.error(`[ai] failed id=${lead.id} reason=sms`);
     }
