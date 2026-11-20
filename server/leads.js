@@ -525,7 +525,7 @@ function setReplyFolder(id, folder) {
   return lead;
 }
 
-function scheduleLead(id, jobDateRaw) {
+function scheduleLead(id, jobDateRaw, opts = {}) {
   const lead = all().find((row) => row.id === id);
   if (!lead) return null;
   const raw = String(jobDateRaw || '').trim();
@@ -535,10 +535,11 @@ function scheduleLead(id, jobDateRaw) {
   if (lead.status !== 'Booked') patch.statusBeforeSchedule = lead.status || 'Quoted';
   const saved = store.update('leads', id, patch);
   if (saved) {
+    const note = String((opts && opts.note) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     addTimeline(id, {
       kind: 'note',
       system: true,
-      body: jobDate ? `Scheduled for ${jobDate}` : 'Scheduled',
+      body: note || (jobDate ? `Scheduled for ${jobDate}` : 'Scheduled'),
       externalId: `sys:schedule:${saved.updatedAt}`,
       skipUnread: true,
       skipStrip: true,

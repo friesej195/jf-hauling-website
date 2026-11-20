@@ -13,6 +13,7 @@ const twilio = require('./twilio');
 const ai = require('./ai-reply');
 const crmSettings = require('./crm-settings');
 const signature = require('./signature');
+const autoSchedule = require('./auto-schedule');
 
 const COOKIE = 'jf_crm';
 const TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -1370,6 +1371,13 @@ function mount(app) {
     const next = safeNext((req.body && req.body.next) || `/crm/lead/${lead.id}`);
     res.redirect(303, withUndo(next, lead.id));
   });
+  async function finishSend(res, lead, body, channel) {
+    const result = await autoSchedule.apply(lead.id, body, { channel });
+    const params = new URLSearchParams();
+    params.set('sent', channel === 'sms' ? 'sms' : 'email');
+    if (result.scheduled) params.set('undo', lead.id);
+    res.redirect(303, `/crm/lead/${lead.id}?${params}`);
+  }
   app.post('/crm/lead/:id/reply', requireSession, requireCsrf, async (req, res) => {
     const lead = leads.find(req.params.id);
     if (!lead) return sendHtml(req, res, 404, shell(req, req.crm, { title: 'Leads', main: '<p class="empty">That lead is not on file.</p>', active: 'all' }));
@@ -1382,12 +1390,12 @@ function mount(app) {
       const subject = String((req.body && req.body.subject) || '').trim().slice(0, 200);
       const sent = await crmMail.sendLeadEmail({ lead, to: lead.email, subject: subject || 'JF Hauling', body, ai: false });
       if (!sent.ok) return back(sent.error || 'mail-send');
-    } else {
-      const sent = await twilio.sendSms({ to: lead.phone, body: body.slice(0, 1000) });
-      if (!sent.ok) return back(sent.error || 'twilio-send');
-      leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body: body.slice(0, 1000), ai: false });
+      return finishSend(res, lead, body, 'email');
     }
-    res.redirect(303, `/crm/lead/${lead.id}?sent=${choice.channel === 'email' ? 'email' : 'sms'}`);
+    const sent = await twilio.sendSms({ to: lead.phone, body: body.slice(0, 1000) });
+    if (!sent.ok) return back(sent.error || 'twilio-send');
+    leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body: body.slice(0, 1000), ai: false });
+    return finishSend(res, lead, body, 'sms');
   });
   app.post('/crm/lead/:id/email', requireSession, requireCsrf, async (req, res) => {
     const lead = leads.find(req.params.id);
@@ -1399,7 +1407,7 @@ function mount(app) {
     if (!body) return back('empty');
     const sent = await crmMail.sendLeadEmail({ lead, to: lead.email, subject: subject || 'JF Hauling', body, ai: false });
     if (!sent.ok) return back(sent.error || 'mail-send');
-    res.redirect(303, `/crm/lead/${lead.id}?sent=email`);
+    return finishSend(res, lead, body, 'email');
   });
   app.post('/crm/lead/:id/sms', requireSession, requireCsrf, async (req, res) => {
     const lead = leads.find(req.params.id);
@@ -1411,7 +1419,7 @@ function mount(app) {
     const sent = await twilio.sendSms({ to: lead.phone, body });
     if (!sent.ok) return back(sent.error || 'twilio-send');
     leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body, ai: false });
-    res.redirect(303, `/crm/lead/${lead.id}?sent=sms`);
+    return finishSend(res, lead, body, 'sms');
   });
   app.post('/crm/lead/:id/draft', requireSession, requireCsrf, async (req, res) => {
     privateHeaders(res);
