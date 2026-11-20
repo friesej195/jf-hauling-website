@@ -23,6 +23,7 @@
     "test:replies": "node tests/crm-replies.js",
     "test:scheduled": "node tests/crm-scheduled.js",
     "test:moves": "node tests/crm-moves.js",
+    "test:autoschedule": "node tests/crm-auto-schedule.js",
     "test:signature": "node tests/crm-signature.js",
     "test:reviews": "node tests/reviews.js"
   },
