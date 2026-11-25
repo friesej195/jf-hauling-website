@@ -185,7 +185,25 @@ details{margin-top:8px}
 summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:pointer}
 .count{color:var(--muted);font-size:.88rem;margin:0 0 8px}
 .back{color:#fff}
-.thread{display:flex;flex-direction:column;gap:8px;max-height:min(62vh,640px);overflow-y:auto;padding:2px 0 8px}
+.thread{display:flex;flex-direction:column;gap:8px;padding:2px 0 8px}
+.lead-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.lead-head h2{font-size:1.4rem;line-height:1.15;margin:0;flex:1}
+.actions-open{width:auto;flex:0 0 auto;min-height:48px;padding:0 16px}
+.contact{display:block;font-weight:800;font-size:1.05rem;padding:4px 0;text-decoration:underline;text-underline-offset:3px}
+.facts{display:grid;gap:8px;margin:10px 0 12px}
+.facts div{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:baseline}
+.facts dt{margin:0;color:var(--muted);font-size:.8rem;font-weight:700}
+.facts dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.lead-sheet h3{margin:12px 0 6px;font-size:.95rem}
+.full-msg{white-space:pre-wrap;margin:0;font-size:1.02rem}
+.composer{position:fixed;left:0;right:0;bottom:calc(68px + env(safe-area-inset-bottom));z-index:5;background:#fff;border-top:1px solid var(--line);padding:8px 12px;box-shadow:0 -4px 16px rgba(42,45,50,.06)}
+.composer-inner{max-width:720px;margin:0 auto;display:grid;gap:8px}
+.composer textarea{min-height:52px;max-height:110px}
+.composer .send-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.composer .hint{margin:0}
+.btn:disabled{opacity:.45}
+main:has(.composer){padding-bottom:calc(230px + env(safe-area-inset-bottom))}
+main:has(.composer) .toast{bottom:calc(220px + env(safe-area-inset-bottom))}
 .bubble{max-width:min(85%,520px);padding:10px 12px;border-radius:16px;background:#fff;border:1px solid #ececea}
 .bubble.in{align-self:flex-start;border-bottom-left-radius:5px}
 .bubble.out{align-self:flex-end;background:#2A2D32;color:#fff;border:0;border-bottom-right-radius:5px}
@@ -705,20 +723,19 @@ const THREAD_JS = `<script>
 (function(){
   var box=document.getElementById('thread');
   if(!box) return;
-  box.scrollTop=box.scrollHeight;
-  window.scrollTo(0, document.body.scrollHeight);
   var stamp=box.getAttribute('data-stamp')||'';
+  function nearBottom(){return window.innerHeight+window.scrollY>=document.body.scrollHeight-160;}
   async function tick(){
     if(document.hidden) return;
     var res=await fetch(box.getAttribute('data-url')+'?stamp='+encodeURIComponent(stamp),{headers:{Accept:'application/json'}});
     if(!res.ok) return;
     var data=await res.json();
     if(!data.stamp || data.stamp===stamp || !data.html) return;
-    var near=box.scrollHeight-box.scrollTop-box.clientHeight<90;
+    var near=nearBottom();
     box.innerHTML=data.html;
     stamp=data.stamp;
     box.setAttribute('data-stamp',stamp);
-    if(near) box.scrollTop=box.scrollHeight;
+    if(near) window.scrollTo(0, document.body.scrollHeight);
   }
   setInterval(function(){tick().catch(function(){});},8000);
 })();
@@ -726,8 +743,7 @@ const THREAD_JS = `<script>
 const DRAFT_JS = `<script>
 document.querySelectorAll('[data-draft]').forEach(function(btn){
   btn.addEventListener('click', function(){
-    var picked=document.querySelector('#reply-form input[name=channel]:checked');
-    var channel = picked ? picked.value : btn.getAttribute('data-draft');
+    var channel = btn.getAttribute('data-draft') || 'email';
     var box = document.getElementById('reply-body');
     var status = document.getElementById('reply-draft-status');
     var csrf = document.querySelector('input[name=_csrf]');
@@ -745,23 +761,52 @@ document.querySelectorAll('[data-draft]').forEach(function(btn){
 });
 </script>`;
 
-function folderMoves(lead, csrf) {
-  const folder = leads.folderOf(lead);
-  const buttons = [];
-  if (folder !== 'replied') buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replied"><button class="btn btn-dark" type="submit">Mark replied</button></form>`);
-  else buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replies"><button class="btn btn-line" type="submit">New replies</button></form>`);
-  if (folder !== 'scheduled') buttons.push(`<form class="move-schedule" method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${csrf}"><label>Job date<input type="date" name="jobDate" value="${esc(lead.jobDate || '')}"></label><button class="btn btn-line" type="submit">Mark scheduled</button></form>`);
-  if (folder === 'closed') buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow span2" type="submit">Reopen</button></form>`);
-  else buttons.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/close"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-line" type="submit">Close</button></form>`);
-  return `<div class="move-row" aria-label="Move quote">${buttons.join('')}</div>`;
+function fact(label, html) {
+  if (!html) return '';
+  return `<div><dt>${esc(label)}</dt><dd>${html}</dd></div>`;
 }
 
-function replyFolderButton(lead, csrf) {
+function actionsSheet(lead, csrf) {
   const folder = leads.folderOf(lead);
-  if (folder !== 'replies' && folder !== 'replied') return '';
-  const next = folder === 'replies' ? 'replied' : 'replies';
-  const label = folder === 'replies' ? 'Mark replied' : 'New replies';
-  return `<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="${next}"><button class="btn btn-line" type="submit">${label}</button></form>`;
+  const moves = [];
+  if (folder !== 'replied') moves.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replied"><button class="btn btn-dark" type="submit">Mark replied</button></form>`);
+  else moves.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reply-folder"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="folder" value="replies"><button class="btn btn-line" type="submit">New replies</button></form>`);
+  if (folder !== 'scheduled') moves.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/schedule"><input type="hidden" name="_csrf" value="${csrf}"><label>Job date<input type="date" name="jobDate" value="${esc(lead.jobDate || '')}"></label><button class="btn btn-line" type="submit">Mark scheduled</button></form>`);
+  else moves.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/unschedule" onsubmit="return confirm('Move this quote back from scheduled?');"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-line" type="submit">Move back</button></form>`);
+  if (folder === 'closed') moves.push(`<form method="post" action="/crm/lead/${esc(lead.id)}/reopen"><input type="hidden" name="_csrf" value="${csrf}"><button class="btn btn-yellow" type="submit">Reopen</button></form>`);
+  else moves.push(`<a class="btn btn-line" href="#close-sheet">Move to Closed</a>`);
+  return `<div class="sheet" id="actions" role="dialog" aria-labelledby="actions-title">
+    <a class="sheet-backdrop" href="/crm/lead/${esc(lead.id)}" aria-label="Close actions"></a>
+    <div class="sheet-card">
+      <h2 id="actions-title">Actions</h2>
+      ${moves.join('')}
+      <form method="post" action="/crm/lead/${esc(lead.id)}" onsubmit="var s=this.status.value;if(s==='Closed'||s==='Lost')return confirm('Mark this quote '+s+'?');">
+        <input type="hidden" name="_csrf" value="${csrf}">
+        <label>Status<select name="status">${leads.STATUSES.map((s) => `<option${s === lead.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+        ${field('followUpDate', 'Follow-up', lead.followUpDate, { type: 'date' })}
+        ${field('quotedPrice', 'Quote amount', lead.quotedPrice, { max: 80 })}
+        ${field('note', 'Add a note', '', { multiline: true, max: 2000 })}
+        ${field('name', 'Name', lead.name, { max: 120 })}
+        ${field('phone', 'Phone', lead.phone, { type: 'tel', mode: 'tel', max: 80 })}
+        ${field('email', 'Email', lead.email, { type: 'email', mode: 'email', max: 150 })}
+        <label>Source<select name="source">${leads.SOURCES.map((s) => `<option value="${s}"${lead.source === s ? ' selected' : ''}>${esc(SOURCE_LABEL[s])}</option>`).join('')}</select></label>
+        ${field('pickup', 'Pickup', lead.pickup, { max: 200 })}
+        ${field('dropoff', 'Drop-off', lead.dropoff, { max: 200 })}
+        ${field('loadType', 'Load type', lead.loadType, { list: 'loads', max: 80 })}
+        <datalist id="loads">${LOAD_LIST.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
+        ${field('shedSize', 'Shed size', lead.shedSize, { max: 40 })}
+        <button class="btn btn-yellow" type="submit">Save changes</button>
+      </form>
+      <form method="post" action="/crm/lead/${esc(lead.id)}/ai">
+        <input type="hidden" name="_csrf" value="${csrf}">
+        <label class="switch"><input type="checkbox" name="aiAutoReply" value="1"${lead.aiAutoReply ? ' checked' : ''}> AI auto-reply</label>
+        <button class="btn btn-dark" type="submit">Save auto-reply</button>
+      </form>
+      ${lead.needsJohan ? `<form method="post" action="/crm/lead/${esc(lead.id)}/ai"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="clearJohan" value="1"><button class="btn btn-line" type="submit">Clear Needs Johan</button></form>` : ''}
+      <button class="btn btn-line" type="button" data-draft="email" data-url="/crm/lead/${esc(lead.id)}/draft">Draft with AI</button>
+      <a class="btn btn-line" href="/crm/lead/${esc(lead.id)}">Done</a>
+    </div>
+  </div>`;
 }
 
 function closeSheet(lead, csrf) {
@@ -784,95 +829,82 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
   const tel = leads.telHref(lead.phone);
   const mail = leads.mailHref(lead.email);
   const name = lead.name || 'No name';
-  const actions = [
-    tel ? `<a class="btn btn-yellow" href="${esc(tel)}">Call</a>` : '',
-    mail ? `<a class="btn btn-line" href="${esc(mail)}">Email</a>` : '',
-  ].filter(Boolean).join('');
   const csrf = esc(req.crm.csrf);
-  const emailHint = config.microsoft.clientId
-    ? (outlook.connected() ? '' : '<p class="hint">Connect Outlook in Settings, then you can send from this lead.</p>')
-    : `<p class="hint">Email sends via JF Hauling mail, replies go to ${esc(config.business.email)}.</p>${mailer.mode() === 'off' ? '<p class="hint">Sending is off until RESEND_API_KEY or SMTP is set.</p>' : ''}`;
-  const smsHint = twilio.configured() ? '' : '<p class="hint">Texting is off until Twilio is set up in Settings.</p>';
-  const aiHint = ai.keySet() ? '' : '<p class="hint">Draft with AI is off until an OpenAI key is set.</p>';
+  const closed = lead.status === 'Closed' || lead.status === 'Lost';
   const main = `
     ${undoToast(req)}
     ${flash(req)}
     ${error ? `<p class="banner bad" role="alert">${esc(error)}</p>` : ''}
-    ${(lead.status === 'Closed' || lead.status === 'Lost') ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p>` : ''}
-    ${folderMoves(lead, csrf)}
-    <p class="meta"><span class="pill ${esc(lead.status)}">${esc(lead.status)}</span> ${esc(SOURCE_LABEL[lead.source] || lead.source)} · ${esc(fmtWhen(lead.createdAt))}${lead.quoteId ? ` · Quote ${esc(lead.quoteId)}` : ''}${lead.needsJohan ? '<span class="flag">Needs Johan</span>' : ''}</p>
-    ${[lead.pickup, lead.dropoff].filter(Boolean).length ? `<p class="route">${esc([lead.pickup, lead.dropoff].filter(Boolean).join(' → '))}</p>` : ''}
-    <p class="meta">${esc([lead.loadType, lead.shedSize, lead.quotedPrice].filter(Boolean).join(' · '))}</p>
-    ${actions ? `<div class="actions">${actions}</div>` : ''}
+    ${closed ? `<p class="banner bad" role="status">${lead.closedBy === 'ai' ? 'Closed by AI' : 'Closed'}${lead.closedReason ? `: ${esc(lead.closedReason)}` : ''}</p>` : ''}
+    <section class="panel lead-sheet">
+      <div class="lead-head"><h2>${esc(name)}</h2><a class="btn btn-dark actions-open" href="#actions">Actions</a></div>
+      ${tel ? `<a class="contact" href="${esc(tel)}">${esc(lead.phone)}</a>` : ''}
+      ${mail ? `<a class="contact" href="${esc(mail)}">${esc(lead.email)}</a>` : ''}
+      <dl class="facts">
+        ${fact('Status', `<span class="pill ${esc(lead.status)}">${esc(lead.status)}</span>`)}
+        ${fact('Received', esc(fmtWhen(lead.createdAt)))}
+        ${fact('Source', esc(SOURCE_LABEL[lead.source] || lead.source || ''))}
+        ${fact('Service', esc(lead.loadType || ''))}
+        ${fact('Size', esc(lead.shedSize || ''))}
+        ${fact('Price', esc(lead.quotedPrice || ''))}
+        ${fact('Pickup', esc(lead.pickup || ''))}
+        ${fact('Drop-off', esc(lead.dropoff || ''))}
+        ${fact('Job date', esc(fmtDay(lead.jobDate)))}
+        ${fact('Follow-up', esc(fmtDay(lead.followUpDate)))}
+        ${fact('Quote', esc(lead.quoteId || ''))}
+        ${fact('Reference', esc(lead.externalId || ''))}
+        ${lead.needsJohan ? fact('Flag', '<span class="flag">Needs Johan</span>') : ''}
+      </dl>
+      <h3>Message</h3>
+      <p class="full-msg">${esc(lead.message || 'No message yet.')}</p>
+    </section>
     <h2>Conversation</h2>
     ${threadBlock(lead)}
-    <div class="reply-dock">${replyForm(lead, csrf, emailHint, smsHint, aiHint)}</div>
-    <details class="panel"><summary>More</summary>
-    <form method="post" action="/crm/lead/${esc(lead.id)}/ai">
-      <input type="hidden" name="_csrf" value="${csrf}">
-      <label class="switch"><input type="checkbox" name="aiAutoReply" value="1"${lead.aiAutoReply ? ' checked' : ''}> AI auto-reply</label>
-      <p class="hint">When this is on, a new email or text from this lead can be answered on the same channel. At most 3 automatic replies a day.</p>
-      ${ai.globalOn() ? '' : '<p class="hint">The global auto-reply switch is off, so nothing sends on its own.</p>'}
-      <button class="btn btn-dark" type="submit">Save auto-reply</button>
-    </form>
-    ${lead.needsJohan ? `<form method="post" action="/crm/lead/${esc(lead.id)}/ai"><input type="hidden" name="_csrf" value="${csrf}"><input type="hidden" name="clearJohan" value="1"><button class="btn btn-line" type="submit">Clear Needs Johan</button></form>` : ''}
-    <form method="post" action="/crm/lead/${esc(lead.id)}">
-      <input type="hidden" name="_csrf" value="${csrf}">
-      <div class="panel">
-        <div class="row2">
-          <label>Status<select name="status">${leads.STATUSES.map((s) => `<option${s === lead.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
-          ${field('followUpDate', 'Follow-up', lead.followUpDate, { type: 'date' })}
-        </div>
-        ${field('note', 'Add a note', '', { multiline: true, max: 2000 })}
-      </div>
-      <details class="panel">
-        <summary>Edit contact and job</summary>
-        ${field('name', 'Name', lead.name, { max: 120 })}
-        ${field('phone', 'Phone', lead.phone, { type: 'tel', mode: 'tel', max: 80 })}
-        ${field('email', 'Email', lead.email, { type: 'email', mode: 'email', max: 150 })}
-        <label>Source<select name="source">${leads.SOURCES.map((s) => `<option value="${s}"${lead.source === s ? ' selected' : ''}>${esc(SOURCE_LABEL[s])}</option>`).join('')}</select></label>
-        ${field('pickup', 'Pickup', lead.pickup, { max: 200 })}
-        ${field('dropoff', 'Drop-off', lead.dropoff, { max: 200 })}
-        ${field('loadType', 'Load type', lead.loadType, { list: 'loads', max: 80 })}
-        <datalist id="loads">${LOAD_LIST.map((x) => `<option value="${esc(x)}"></option>`).join('')}</datalist>
-        ${field('shedSize', 'Shed size', lead.shedSize, { max: 40 })}
-        ${field('quotedPrice', 'Quoted price', lead.quotedPrice, { max: 80 })}
-      </details>
-      <div class="savebar"><button class="btn btn-yellow" type="submit">Save</button></div>
-    </form>
-    </details>
-    <section class="panel"><h2>Original message</h2><p class="msg">${esc(lead.message || '—')}</p>${lead.externalId ? `<p class="meta">Reference ${esc(lead.externalId)}</p>` : ''}</section>
-    ${(lead.status === 'Closed' || lead.status === 'Lost') ? '' : closeSheet(lead, csrf)}
+    ${replyForm(lead, csrf)}
+    ${actionsSheet(lead, csrf)}
+    ${closed ? '' : closeSheet(lead, csrf)}
     ${DRAFT_JS}${THREAD_JS}`;
   sendHtml(req, res, status, shell(req, req.crm, { title: name, main, active: 'all', back: '/crm/' }));
 }
 
-function replyForm(lead, csrf, emailHint, smsHint, aiHint) {
+function replyForm(lead, csrf) {
   const choice = leads.replyChannel(lead);
-  if (!choice.channel) return '<p class="hint">Add an email or a phone number before you can reply.</p>';
-  const emailOn = choice.channel === 'email';
-  return `<form class="panel" method="post" action="/crm/lead/${esc(lead.id)}/reply" id="reply-form">
-    <input type="hidden" name="_csrf" value="${csrf}">
-    <div class="seg" role="radiogroup" aria-label="Reply by">
-      <label class="${choice.canEmail ? '' : 'off'}"><input type="radio" name="channel" value="email"${emailOn ? ' checked' : ''}${choice.canEmail ? '' : ' disabled'}>Email</label>
-      <label class="${choice.canText ? '' : 'off'}"><input type="radio" name="channel" value="sms"${emailOn ? '' : ' checked'}${choice.canText ? '' : ' disabled'}>Text</label>
+  if (!choice.channel) return '<p class="hint">Add an email or a phone number in Actions before you can reply.</p>';
+  const textHint = twilio.configured() ? '' : '<p class="hint">Send Text opens the Messages app and saves the text here.</p>';
+  return `<form class="composer" method="post" action="/crm/lead/${esc(lead.id)}/reply" id="reply-form">
+    <div class="composer-inner">
+      <input type="hidden" name="_csrf" value="${csrf}">
+      <input type="hidden" name="subject" value="${esc(emailSubject(lead))}">
+      <label>Reply<textarea id="reply-body" name="body" maxlength="4000" placeholder="Write a reply"></textarea></label>
+      <p class="draft-status" id="reply-draft-status" role="status"></p>
+      ${textHint}
+      <div class="send-row">
+        <button class="btn btn-dark" type="submit" name="channel" value="email"${choice.canEmail ? '' : ' disabled'}>Send Email</button>
+        <button class="btn btn-yellow" type="submit" name="channel" value="sms"${choice.canText ? '' : ' disabled'}>Send Text</button>
+      </div>
     </div>
-    <p class="meta email-only">To ${esc(lead.email || '—')}</p>
-    <p class="meta text-only">To ${esc(phoneDisplay(lead.phone) || '—')}</p>
-    ${(emailHint || smsHint || aiHint) ? `<details><summary>Sending</summary>${emailHint}${smsHint}${aiHint}</details>` : ''}
-    <div class="email-only"><label>Subject<input name="subject" maxlength="200" value="${esc(emailSubject(lead))}"></label></div>
-    <label>Message<textarea id="reply-body" name="body" maxlength="4000"></textarea></label>
-    <div class="sig-preview email-only">${signature.cleanSignatureHtml(signature.current().emailHtml)}</div>
-    <p class="sig-preview text-only">${esc(signature.current().sms.trim())}</p>
-    <p class="draft-status" id="reply-draft-status" role="status"></p>
-    <button class="btn btn-line" type="button" data-draft="email" data-url="/crm/lead/${esc(lead.id)}/draft">Draft with AI</button>
-    <button class="btn btn-yellow" type="submit">Send</button>
   </form>`;
 }
 
-function phoneDisplay(phone) {
+function smsHref(phone, body) {
   const e164 = require('./phone').toE164(phone);
-  return e164 || phone || '';
+  if (!e164) return '';
+  return `sms:${e164}?&body=${encodeURIComponent(String(body || ''))}`;
+}
+
+async function handsetText(req, res, lead, rawBody) {
+  const text = String(rawBody || '').trim().slice(0, 1000);
+  const back = (code) => res.redirect(303, `/crm/lead/${lead.id}?error=${code}`);
+  if (!lead.phone) return back('no-phone');
+  if (!text) return back('empty');
+  const signed = signature.composeSms(text);
+  const href = smsHref(lead.phone, signed);
+  if (!href) return back('no-phone');
+  leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body: signed, ai: false });
+  const booked = await autoSchedule.apply(lead.id, text, { channel: 'sms' });
+  const backHref = `/crm/lead/${lead.id}${booked.scheduled ? `?undo=${encodeURIComponent(lead.id)}` : ''}`;
+  const main = `<section class="panel"><h2>Opening Messages</h2><p>This text is saved on the quote.</p><p class="msg">${esc(signed)}</p><p><a class="btn btn-yellow" id="open-messages" href="${esc(href)}">Open Messages</a></p><p><a class="btn btn-line" href="${esc(backHref)}">Back to the quote</a></p></section><script>var a=document.getElementById('open-messages');if(a)location.href=a.href;</script>`;
+  sendHtml(req, res, 200, shell(req, req.crm, { title: lead.name || 'Text', main, active: 'all', back: `/crm/lead/${lead.id}` }));
 }
 
 function settingsPage(req, res) {
@@ -1392,9 +1424,11 @@ function mount(app) {
       if (!sent.ok) return back(sent.error || 'mail-send');
       return finishSend(res, lead, body, 'email');
     }
-    const sent = await twilio.sendSms({ to: lead.phone, body: body.slice(0, 1000) });
+    const text = body.slice(0, 1000);
+    if (!twilio.configured()) return handsetText(req, res, lead, text);
+    const sent = await twilio.sendSms({ to: lead.phone, body: text });
     if (!sent.ok) return back(sent.error || 'twilio-send');
-    leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body: body.slice(0, 1000), ai: false });
+    leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body: text, ai: false });
     return finishSend(res, lead, body, 'sms');
   });
   app.post('/crm/lead/:id/email', requireSession, requireCsrf, async (req, res) => {
@@ -1416,6 +1450,7 @@ function mount(app) {
     const back = (code) => res.redirect(303, `/crm/lead/${lead.id}?error=${code}`);
     if (!lead.phone) return back('no-phone');
     if (!body) return back('empty');
+    if (!twilio.configured()) return handsetText(req, res, lead, body);
     const sent = await twilio.sendSms({ to: lead.phone, body });
     if (!sent.ok) return back(sent.error || 'twilio-send');
     leads.addTimeline(lead.id, { kind: 'sms', direction: 'out', body, ai: false });
