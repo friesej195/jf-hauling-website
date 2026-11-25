@@ -70,7 +70,7 @@ function freePort() {
   const cookie = (login.headers.getSetCookie ? login.headers.getSetCookie() : []).map((line) => line.split(';')[0]).join('; ');
   const detail = await (await fetch(base + `/crm/lead/${created.lead.id}`, { headers: { Cookie: cookie } })).text();
   const list = await (await fetch(base + '/crm/?folder=opened', { headers: { Cookie: cookie } })).text();
-  check('an opened quote shows Mark replied, Mark scheduled, and Close at the top', detail.includes('class="move-row"') && detail.includes('>Mark replied</button>') && detail.includes('>Mark scheduled</button>') && detail.includes('type="date"') && detail.includes('>Close</button>') && !detail.includes('>Reopen</button>'));
+  check('an opened quote keeps Mark replied, Mark scheduled, and Close in Actions', detail.includes('>Actions</a>') && detail.includes('id="actions"') && detail.includes('>Mark replied</button>') && detail.includes('>Mark scheduled</button>') && detail.includes('Move to Closed') && detail.includes('>Send Email</button>') && detail.includes('>Send Text</button>') && !detail.includes('class="move-row"') && !detail.includes('>Reopen</button>') && !detail.includes('overflow-y:auto'));
   check('the list menu has the same moves', list.includes('Actions for Jane Tester') && list.includes('>Mark replied</button>') && list.includes('>Mark scheduled</button>') && list.includes('>Close</button>'));
   child.kill('SIGTERM');
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
