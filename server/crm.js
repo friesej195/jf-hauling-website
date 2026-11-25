@@ -196,14 +196,16 @@ summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:p
 .facts dd{margin:0;font-weight:700;overflow-wrap:anywhere}
 .lead-sheet h3{margin:12px 0 6px;font-size:.95rem}
 .full-msg{white-space:pre-wrap;margin:0;font-size:1.02rem}
-.composer{position:fixed;left:0;right:0;bottom:calc(68px + env(safe-area-inset-bottom));z-index:5;background:#fff;border-top:1px solid var(--line);padding:8px 12px;box-shadow:0 -4px 16px rgba(42,45,50,.06)}
-.composer-inner{max-width:720px;margin:0 auto;display:grid;gap:8px}
-.composer textarea{min-height:52px;max-height:110px}
+.composer{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border-top:1px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));box-shadow:0 -2px 10px rgba(42,45,50,.08)}
+.composer-inner{max-width:720px;margin:0 auto;display:grid;gap:6px}
+.composer textarea{display:block;width:100%;height:44px;min-height:44px;max-height:calc(1.35em * 4 + 22px);resize:none;overflow:hidden;line-height:1.35;padding:10px 12px;margin:0;font-size:16px}
 .composer .send-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.composer .hint{margin:0}
+.composer .btn{min-height:44px;padding:8px 10px}
+.composer .draft-status{min-height:0;margin:0;font-size:.75rem;font-weight:700}
+.composer .draft-status:empty{display:none}
 .btn:disabled{opacity:.45}
-main:has(.composer){padding-bottom:calc(230px + env(safe-area-inset-bottom))}
-main:has(.composer) .toast{bottom:calc(220px + env(safe-area-inset-bottom))}
+body:has(.composer) main{padding-bottom:calc(118px + env(safe-area-inset-bottom, 0px))}
+body:has(.composer) .toast{bottom:calc(var(--composer-h, 118px) + 10px)}
 .bubble{max-width:min(85%,520px);padding:10px 12px;border-radius:16px;background:#fff;border:1px solid #ececea}
 .bubble.in{align-self:flex-start;border-bottom-left-radius:5px}
 .bubble.out{align-self:flex-end;background:#2A2D32;color:#fff;border:0;border-bottom-right-radius:5px}
@@ -250,7 +252,7 @@ main:has(.composer) .toast{bottom:calc(220px + env(safe-area-inset-bottom))}
 .sheet{display:none}
 .sheet:target{display:block}
 .sheet-backdrop{position:fixed;inset:0;background:rgba(42,45,50,.45);z-index:7}
-.sheet-card{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto;box-shadow:0 -8px 30px rgba(42,45,50,.2)}
+.sheet-card{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:86vh;max-height:86dvh;overflow:auto;box-shadow:0 -8px 30px rgba(42,45,50,.2)}
 .sheet-card h2{font-size:1.15rem}
 .swipe{position:relative;margin:0 0 10px}
 .swipe-close{position:absolute;top:0;right:0;bottom:0;width:96px;margin:0}
@@ -281,8 +283,8 @@ main:has(.composer) .toast{bottom:calc(220px + env(safe-area-inset-bottom))}
 .sig-preview img{width:80px;height:auto}
 `;
 
-function page({ title, body, authed, active, dueCount, csrf, back, attention = 0 }) {
-  const dock = authed ? `<nav class="dock" aria-label="Leads">
+function page({ title, body, authed, active, dueCount, csrf, back, attention = 0, footer = '', dock: showDock = true }) {
+  const dock = authed && showDock ? `<nav class="dock" aria-label="Leads">
     <a href="/crm/" class="${active === 'all' ? 'on' : ''}" ${active === 'all' ? 'aria-current="page"' : ''}>Leads</a>
     <a href="/crm/due" class="${active === 'due' ? 'on' : ''}" ${active === 'due' ? 'aria-current="page"' : ''}>Due${dueCount ? ` <span class="badge">${dueCount}</span>` : ''}</a>
     <a href="/crm/new" class="${active === 'new' ? 'on' : ''}" ${active === 'new' ? 'aria-current="page"' : ''}>New</a>
@@ -295,7 +297,7 @@ function page({ title, body, authed, active, dueCount, csrf, back, attention = 0
 <html lang="en-CA">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="robots" content="noindex, nofollow">
 <meta name="googlebot" content="noindex, nofollow">
 <meta name="color-scheme" content="only light">
@@ -312,7 +314,9 @@ function page({ title, body, authed, active, dueCount, csrf, back, attention = 0
 <body>
 ${body.includes('class="login"') ? '' : `<header class="appbar">${backLink}<div class="title"><span class="sub">${esc(B.name)}</span><h1>${esc(heading)}</h1></div><div class="spacer"></div>${logout}</header>`}
 ${body}
+${footer}
 ${dock}
+${footer.includes('class="composer"') ? COMPOSER_JS : ''}
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/crm/sw.js',{scope:'/crm/'}).catch(function(){})}</script>
 ${authed ? `<script>(function(){var n=${Math.max(0, Math.floor(Number(attention) || 0))};try{if(!navigator.setAppBadge)return;var p=n>0?navigator.setAppBadge(n):(navigator.clearAppBadge?navigator.clearAppBadge():navigator.setAppBadge(0));if(p&&p.catch)p.catch(function(){});}catch(e){}})();</script>` : ''}
 </body>
@@ -334,6 +338,8 @@ function shell(req, session, opts) {
     attention: session ? leads.attentionCount() : 0,
     csrf: session ? session.csrf : '',
     back: opts.back || '',
+    footer: opts.footer || '',
+    dock: opts.dock !== false,
   });
 }
 
@@ -740,6 +746,52 @@ const THREAD_JS = `<script>
   setInterval(function(){tick().catch(function(){});},8000);
 })();
 </script>`;
+const COMPOSER_JS = `<script>
+(function(){
+  var bar=document.querySelector('.composer');
+  var box=document.getElementById('reply-body');
+  var main=document.getElementById('main');
+  if(!bar||!main) return;
+  function grow(){
+    if(!box) return;
+    var cs=getComputedStyle(box);
+    var line=parseFloat(cs.lineHeight)||22;
+    var pad=(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0);
+    var max=Math.round(line*4+pad);
+    box.style.height='44px';
+    var next=Math.min(box.scrollHeight, max);
+    box.style.height=next+'px';
+    box.style.overflowY=box.scrollHeight>max+1?'auto':'hidden';
+  }
+  function inset(){
+    if(typeof window.__keyboardInset==='number') return Math.max(0, window.__keyboardInset);
+    var vv=window.visualViewport;
+    if(!vv) return 0;
+    return Math.max(0, Math.round(window.innerHeight-vv.offsetTop-vv.height));
+  }
+  function place(){
+    var lift=inset();
+    bar.style.transform=lift?'translate3d(0,'+(-lift)+'px,0)':'';
+    var h=bar.offsetHeight;
+    document.documentElement.style.setProperty('--composer-h', h+'px');
+    main.style.paddingBottom=(h+lift+12)+'px';
+  }
+  if(box){
+    box.addEventListener('input', function(){ grow(); place(); });
+    box.addEventListener('focus', function(){
+      grow(); place();
+      setTimeout(function(){ try{ box.scrollIntoView({block:'nearest'}); }catch(e){} place(); }, 60);
+    });
+  }
+  grow();
+  place();
+  if(window.visualViewport){
+    visualViewport.addEventListener('resize', place);
+    visualViewport.addEventListener('scroll', place);
+  }
+  window.addEventListener('resize', place);
+})();
+</script>`;
 const DRAFT_JS = `<script>
 document.querySelectorAll('[data-draft]').forEach(function(btn){
   btn.addEventListener('click', function(){
@@ -860,24 +912,22 @@ function detailPage(req, res, lead, { error = '', status = 200 } = {}) {
     </section>
     <h2>Conversation</h2>
     ${threadBlock(lead)}
-    ${replyForm(lead, csrf)}
     ${actionsSheet(lead, csrf)}
     ${closed ? '' : closeSheet(lead, csrf)}
     ${DRAFT_JS}${THREAD_JS}`;
-  sendHtml(req, res, status, shell(req, req.crm, { title: name, main, active: 'all', back: '/crm/' }));
+  const footer = replyForm(lead, csrf);
+  sendHtml(req, res, status, shell(req, req.crm, { title: name, main, footer, dock: false, active: 'all', back: '/crm/' }));
 }
 
 function replyForm(lead, csrf) {
   const choice = leads.replyChannel(lead);
   if (!choice.channel) return '<p class="hint">Add an email or a phone number in Actions before you can reply.</p>';
-  const textHint = twilio.configured() ? '' : '<p class="hint">Send Text opens the Messages app and saves the text here.</p>';
   return `<form class="composer" method="post" action="/crm/lead/${esc(lead.id)}/reply" id="reply-form">
     <div class="composer-inner">
       <input type="hidden" name="_csrf" value="${csrf}">
       <input type="hidden" name="subject" value="${esc(emailSubject(lead))}">
-      <label>Reply<textarea id="reply-body" name="body" maxlength="4000" placeholder="Write a reply"></textarea></label>
+      <textarea id="reply-body" name="body" rows="1" maxlength="4000" aria-label="Reply" placeholder="Write a reply"></textarea>
       <p class="draft-status" id="reply-draft-status" role="status"></p>
-      ${textHint}
       <div class="send-row">
         <button class="btn btn-dark" type="submit" name="channel" value="email"${choice.canEmail ? '' : ' disabled'}>Send Email</button>
         <button class="btn btn-yellow" type="submit" name="channel" value="sms"${choice.canText ? '' : ' disabled'}>Send Text</button>
